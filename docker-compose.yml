@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: homeatlas-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: home_atlas
+      POSTGRES_USER: home_atlas
+      POSTGRES_PASSWORD: home_atlas
+    ports:
+      - "5432:5432"
+    volumes:
+      - homeatlas_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U home_atlas -d home_atlas"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  homeatlas_postgres_data:
+

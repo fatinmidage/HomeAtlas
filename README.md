@@ -31,7 +31,28 @@ uv run pytest
 
 ## PostgreSQL
 
-Create a database, set `HOME_ATLAS_DATABASE_URL`, then run:
+For local development, use Docker Compose:
+
+```bash
+/Applications/Docker.app/Contents/Resources/bin/docker compose up -d postgres
+```
+
+Then initialize the schema and seed token-mapped people:
+
+```bash
+cp .env.example .env
+uv run python -m home_atlas.cli doctor
+uv run python -m home_atlas.cli init-db
+uv run python -m home_atlas.cli smoke --token you-token
+```
+
+Expected smoke result includes:
+
+```text
+"answer": "护照 在 保险柜抽屉"
+```
+
+If you manage PostgreSQL outside Docker, create a database, set `HOME_ATLAS_DATABASE_URL`, then run:
 
 ```bash
 uv run alembic upgrade head
@@ -41,6 +62,23 @@ Example connection string:
 
 ```text
 postgresql+psycopg://home_atlas:home_atlas@localhost:5432/home_atlas
+```
+
+The Python ops entrypoint does not require `psql` to be on `PATH`:
+
+```bash
+export HOME_ATLAS_DATABASE_URL='postgresql+psycopg://home_atlas:home_atlas@localhost:5432/home_atlas'
+export HOME_ATLAS_TOKEN_MAP='{"you-token":"你","spouse-token":"配偶"}'
+
+uv run python -m home_atlas.cli doctor
+uv run python -m home_atlas.cli init-db --create-database
+uv run python -m home_atlas.cli smoke --token you-token
+```
+
+If the database role already exists but the database does not, `--create-database` creates the configured database through the maintenance database named `postgres`. If your local Postgres uses your macOS user as the role, change the URL accordingly, for example:
+
+```bash
+export HOME_ATLAS_DATABASE_URL='postgresql+psycopg://wuyingheng@localhost:5432/home_atlas'
 ```
 
 ## Hermes MCP Shape
@@ -64,7 +102,7 @@ The service resolves the Bearer token server-side and passes only `actor_id` int
 
 ## Local HTTP Smoke Runner
 
-The stdlib runner is intentionally small and useful before wiring a full MCP deployment:
+The stdlib runner is intentionally small and useful before wiring a full MCP deployment. It uses the same `HOME_ATLAS_DATABASE_URL` and token map as the CLI:
 
 ```bash
 uv run python -m home_atlas.http_server
@@ -96,3 +134,11 @@ result = home_atlas("把护照放进保险柜抽屉", session, actor_id)
 
 This routes to `card_add_item`, creates or reuses the location, upserts the item, and writes an `Event` with the resolved actor.
 
+## Remaining Production Work
+
+- Wire FastMCP streamable HTTP transport to extract `Authorization: Bearer ...` headers in deployment middleware and inject the authenticated token into MCP request meta.
+- Replace the deterministic rule router with real Pydantic AI parent/child agent delegation while preserving the same Action layer.
+- Run the two-Mac Hermes validation: token A writes, token B reads, and audit reports the original actor.
+- Add launchd or another process supervisor for the home-server Mac.
+- Add `pg_dump` backup and restore verification.
+- Add concurrent-write integration tests against PostgreSQL.

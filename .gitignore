@@ -4,5 +4,5 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .env
+home_atlas.db
 .DS_Store
-
