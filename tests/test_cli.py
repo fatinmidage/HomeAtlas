@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 
-from home_atlas.cli import init_db, smoke
+from home_atlas.cli import dual_smoke, init_db, smoke
 from home_atlas.config import Settings
+from home_atlas.llm_config import normalize_model_name
 
 
 def test_smoke_runs_through_write_read_audit(tmp_path) -> None:
@@ -12,6 +13,27 @@ def test_smoke_runs_through_write_read_audit(tmp_path) -> None:
     init_db(settings)
 
     exit_code = smoke(settings, token="you-token", item="护照", location="保险柜抽屉")
+
+    assert exit_code == 0
+
+
+def test_dual_smoke_checks_writer_actor(tmp_path) -> None:
+    database_url = f"sqlite:///{tmp_path / 'home_atlas.db'}"
+    settings = Settings(
+        _env_file=None,
+        database_url=database_url,
+        token_map={"you-token": "你", "spouse-token": "配偶"},
+        agent_mode="rules",
+    )
+    init_db(settings)
+
+    exit_code = dual_smoke(
+        settings,
+        writer_token="you-token",
+        reader_token="spouse-token",
+        item="双端烟测护照",
+        location="双端烟测保险柜",
+    )
 
     assert exit_code == 0
 
@@ -26,6 +48,21 @@ def test_settings_accepts_agent_mode() -> None:
     assert settings.agent_mode == "rules"
 
 
-def test_settings_accepts_openrouter_api_key_alias() -> None:
-    settings = Settings(_env_file=None, OPENROUTER_API_KEY="test-key")
-    assert settings.openrouter_api_key == "test-key"
+def test_settings_accepts_llm_model_from_env_alias() -> None:
+    settings = Settings(_env_file=None, HOME_ATLAS_LLM_MODEL="deepseek:deepseek-chat")
+    assert settings.llm_model == "deepseek:deepseek-chat"
+
+
+def test_settings_accepts_app_llm_api_key_alias() -> None:
+    settings = Settings(_env_file=None, HOME_ATLAS_LLM_API_KEY="test-key")
+    assert settings.llm_api_key == "test-key"
+
+
+def test_settings_accepts_provider_api_key_alias() -> None:
+    settings = Settings(_env_file=None, DEEPSEEK_API_KEY="test-key")
+    assert settings.llm_api_key == "test-key"
+
+
+def test_deepseek_bare_model_name_is_normalized() -> None:
+    assert normalize_model_name("deepseek-v4-flash") == "deepseek:deepseek-v4-flash"
+    assert normalize_model_name("deepseek:deepseek-chat") == "deepseek:deepseek-chat"

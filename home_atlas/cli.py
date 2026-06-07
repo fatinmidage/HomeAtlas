@@ -14,6 +14,8 @@ from alembic.config import Config
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 
+from home_atlas import actions
+from home_atlas.backup import backup_database, verify_backup
 from home_atlas.config import Settings, get_settings
 from home_atlas.db import create_db_engine, seed_people_from_tokens, session_scope
 from home_atlas.orchestrator import home_atlas
@@ -38,6 +40,18 @@ def main(argv: list[str] | None = None) -> int:
     smoke_parser.add_argument("--item", default="护照")
     smoke_parser.add_argument("--location", default="保险柜抽屉")
 
+    dual_smoke_parser = subparsers.add_parser("dual-smoke", help="Token A writes, token B reads, audit shows A")
+    dual_smoke_parser.add_argument("--writer-token", default="you-token")
+    dual_smoke_parser.add_argument("--reader-token", default="spouse-token")
+    dual_smoke_parser.add_argument("--item", default="双端烟测护照")
+    dual_smoke_parser.add_argument("--location", default="双端烟测保险柜")
+
+    backup_parser = subparsers.add_parser("backup-db", help="Create a PostgreSQL custom-format pg_dump backup")
+    backup_parser.add_argument("--output", required=True, type=Path)
+
+    verify_parser = subparsers.add_parser("verify-backup", help="Restore a pg_dump backup into a temporary database")
+    verify_parser.add_argument("backup", type=Path)
+
     args = parser.parse_args(argv)
     settings = get_settings()
 
@@ -47,6 +61,18 @@ def main(argv: list[str] | None = None) -> int:
         return init_db(settings, create_database=args.create_database)
     if args.command == "smoke":
         return smoke(settings, token=args.token, item=args.item, location=args.location)
+    if args.command == "dual-smoke":
+        return dual_smoke(
+            settings,
+            writer_token=args.writer_token,
+            reader_token=args.reader_token,
+            item=args.item,
+            location=args.location,
+        )
+    if args.command == "backup-db":
+        return backup_db(settings, output_path=args.output)
+    if args.command == "verify-backup":
+        return verify_backup_command(settings, backup_path=args.backup)
     parser.error(f"unknown command: {args.command}")
     return 2
 
@@ -101,6 +127,66 @@ def smoke(settings: Settings, *, token: str | None, item: str, location: str) ->
             default=str,
         )
     )
+    return 0
+
+
+def dual_smoke(
+    settings: Settings,
+    *,
+    writer_token: str,
+    reader_token: str,
+    item: str,
+    location: str,
+) -> int:
+    if not settings.token_map:
+        print("HOME_ATLAS_TOKEN_MAP is required for dual smoke tests", file=sys.stderr)
+        return 2
+    engine = create_db_engine(settings)
+    with session_scope(engine) as session:
+        writer_id = resolve_actor_id(session, writer_token, settings.token_map)
+        reader_id = resolve_actor_id(session, reader_token, settings.token_map)
+        write_result = home_atlas(f"把{item}放进{location}", session, writer_id, settings)
+        where_result = home_atlas(f"{item}在哪？", session, reader_id, settings)
+        audit = home_atlas(f"上次谁动了{item}？", session, reader_id, settings)
+        event = actions.last_touched(session, item)
+    writer_name = settings.token_map[writer_token]
+    ok = event["actor"] == writer_name
+    print(
+        json.dumps(
+            {
+                "ok": ok,
+                "writer": writer_name,
+                "reader": settings.token_map[reader_token],
+                "write": write_result,
+                "where": where_result,
+                "audit": audit,
+                "event": event,
+            },
+            ensure_ascii=False,
+            indent=2,
+            default=str,
+        )
+    )
+    return 0 if ok else 1
+
+
+def backup_db(settings: Settings, *, output_path: Path) -> int:
+    try:
+        backup_path = backup_database(settings, output_path)
+    except Exception as exc:
+        print(f"backup failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"backup written: {backup_path}")
+    return 0
+
+
+def verify_backup_command(settings: Settings, *, backup_path: Path) -> int:
+    try:
+        result = verify_backup(settings, backup_path)
+    except Exception as exc:
+        print(f"restore verification failed: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
     return 0
 
 

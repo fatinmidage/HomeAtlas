@@ -1,0 +1,5 @@
+mcp_servers:
+  home_atlas:
+    url: "http://<home-server-lan-ip>:8080/mcp"
+    headers:
+      Authorization: "Bearer <this-device-token>"

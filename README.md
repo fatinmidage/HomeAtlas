@@ -44,6 +44,7 @@ cp .env.example .env
 uv run python -m home_atlas.cli doctor
 uv run python -m home_atlas.cli init-db
 uv run python -m home_atlas.cli smoke --token you-token
+uv run python -m home_atlas.cli dual-smoke --writer-token you-token --reader-token spouse-token
 ```
 
 Expected smoke result includes:
@@ -108,18 +109,91 @@ uv run python -m home_atlas.mcp_server
 
 Hermes sends `Authorization: Bearer <token>` to `/mcp`. FastMCP validates the bearer token before the tool runs, then `home_atlas(request)` resolves the actor server-side.
 
+Use `deploy/hermes/mcp.yaml.example` as the two-device template. Each Hermes client should use the same URL but its own Bearer token.
+
+Before the two physical Hermes clients are connected, this command validates the same actor model locally: token A writes, token B reads, and the database audit event must show token A's actor.
+
+```bash
+uv run python -m home_atlas.cli dual-smoke \
+  --writer-token you-token \
+  --reader-token spouse-token \
+  --item 双端烟测护照 \
+  --location 双端烟测保险柜
+```
+
 ## Agent Mode
 
 HomeAtlas supports two orchestrator paths:
 
 - `HOME_ATLAS_AGENT_MODE=rules`: deterministic keyword/regex router, no LLM key required.
 - `HOME_ATLAS_AGENT_MODE=ai`: Pydantic AI parent Agent delegates to perishables, cards/docs, or equipment child Agents.
-- `HOME_ATLAS_AGENT_MODE=auto`: use AI only when `OPENROUTER_API_KEY` is present; otherwise use rules.
+- `HOME_ATLAS_AGENT_MODE=auto`: use AI only when `HOME_ATLAS_LLM_API_KEY` is present; otherwise use rules.
 
 Fill this in `.env` to enable Pydantic AI delegation:
 
 ```bash
-OPENROUTER_API_KEY=...
+HOME_ATLAS_LLM_MODEL=deepseek:deepseek-chat
+HOME_ATLAS_LLM_API_KEY=...
+```
+
+The model value lives with the rest of the runtime configuration in `.env`. `home_atlas/llm_config.py` only defines the environment variable names and DeepSeek provider key mapping.
+
+Bare DeepSeek model names such as `deepseek-v4-flash` are normalized to Pydantic AI's provider form `deepseek:deepseek-v4-flash` at runtime.
+
+## Home Server Process
+
+The launchd template lives at `deploy/launchd/com.homeatlas.server.plist`. It runs:
+
+```bash
+/Users/wuyingheng/项目/HomeAtlas/.venv/bin/python -m home_atlas.mcp_server
+```
+
+with `WorkingDirectory=/Users/wuyingheng/项目/HomeAtlas`, so the service reads the real local `.env`.
+
+Install on the home-server Mac:
+
+```bash
+mkdir -p logs
+cp deploy/launchd/com.homeatlas.server.plist ~/Library/LaunchAgents/com.homeatlas.server.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.homeatlas.server.plist
+launchctl kickstart -k gui/$(id -u)/com.homeatlas.server
+launchctl print gui/$(id -u)/com.homeatlas.server
+```
+
+Stop it with:
+
+```bash
+launchctl bootout gui/$(id -u)/com.homeatlas.server
+```
+
+## Backups
+
+HomeAtlas wraps PostgreSQL's native backup tools. `pg_dump` and `pg_restore` must be installed on the home-server Mac and available on `PATH`.
+
+```bash
+uv run python -m home_atlas.cli backup-db --output backups/home_atlas-$(date +%Y%m%d-%H%M%S).dump
+uv run python -m home_atlas.cli verify-backup backups/<backup-file>.dump
+```
+
+`verify-backup` creates a temporary PostgreSQL database, restores the dump into it, checks `item` and `event` counts, then drops the temporary database.
+
+## PostgreSQL Integration Tests
+
+Concurrent PostgreSQL writes are covered by an opt-in integration test:
+
+```bash
+HOME_ATLAS_INTEGRATION_DATABASE_URL='postgresql+psycopg://home_atlas:home_atlas@localhost:5432/home_atlas' \
+  uv run pytest tests/test_postgres_integration.py
+```
+
+The test writes multiple items concurrently into the same new location and verifies the resulting items and audit events.
+
+## Hermes Reminders
+
+Use `deploy/hermes/list_expiring_reminder.md` to configure a Hermes scheduled reminder that calls:
+
+```text
+哪些物品 14 天内临期或待续费？
 ```
 
 ## Local HTTP Smoke Runner
@@ -159,6 +233,6 @@ This routes to `card_add_item`, creates or reuses the location, upserts the item
 ## Remaining Production Work
 
 - Run the two-Mac Hermes validation: token A writes, token B reads, and audit reports the original actor.
-- Add launchd or another process supervisor for the home-server Mac.
-- Add `pg_dump` backup and restore verification.
-- Add concurrent-write integration tests against PostgreSQL.
+- Install the launchd plist on the home-server Mac.
+- Install `pg_dump`/`pg_restore` on the home-server Mac and run backup verification.
+- Configure the Hermes scheduled reminder on the real Hermes client.

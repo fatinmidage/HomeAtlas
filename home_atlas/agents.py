@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
@@ -10,7 +9,9 @@ from sqlmodel import Session
 
 from home_atlas import actions
 from home_atlas.config import Settings
+from home_atlas.llm_config import export_provider_api_key, has_configured_api_key, normalize_model_name
 from home_atlas.models import ItemDomain, ItemKind
+from home_atlas.security import HomeAtlasError
 
 
 @dataclass
@@ -32,13 +33,14 @@ def should_use_ai(settings: Settings) -> bool:
         return False
     if settings.agent_mode == "ai":
         return True
-    return bool(settings.openrouter_api_key or os.getenv("OPENROUTER_API_KEY"))
+    return has_configured_api_key(settings.llm_api_key)
 
 
 def run_ai_home_atlas(request: str, session: Session, actor_id: int, settings: Settings) -> dict[str, Any]:
-    if settings.openrouter_api_key:
-        os.environ["OPENROUTER_API_KEY"] = settings.openrouter_api_key
-    agents = build_agents(settings.llm_model)
+    if not settings.llm_model:
+        raise ValueError("HOME_ATLAS_LLM_MODEL must be configured for AI mode.")
+    export_provider_api_key(settings.llm_api_key)
+    agents = build_agents(normalize_model_name(settings.llm_model))
     result = agents.orchestrator.run_sync(request, deps=HomeAtlasDeps(session=session, actor_id=actor_id))
     return {"intent": "ai_delegation", "answer": result.output}
 
@@ -52,6 +54,7 @@ def build_agents(model: str) -> HomeAtlasAgents:
         instructions=(
             "You are the perishables sub-agent for HomeAtlas. "
             "Handle only food and medicine inventory. Use only the provided tools. "
+            "If a user asks to put or store an unknown item, add it instead of refusing. "
             "Return a short Chinese answer."
         ),
         defer_model_check=True,
@@ -64,6 +67,7 @@ def build_agents(model: str) -> HomeAtlasAgents:
             "You are the cards and documents sub-agent for HomeAtlas. "
             "Handle documents, passports, insurance policies, payment cards, and membership cards. "
             "Never store full card numbers or CVV. Use only the provided tools. "
+            "If a user asks to put or store an unknown item, add it instead of refusing. "
             "Return a short Chinese answer."
         ),
         defer_model_check=True,
@@ -75,6 +79,7 @@ def build_agents(model: str) -> HomeAtlasAgents:
         instructions=(
             "You are the equipment sub-agent for HomeAtlas. "
             "Handle tools and appliances only. Use only the provided tools. "
+            "If a user asks to put or store an unknown item, add it instead of refusing. "
             "Return a short Chinese answer."
         ),
         defer_model_check=True,
@@ -100,6 +105,21 @@ def build_agents(model: str) -> HomeAtlasAgents:
 
         return equipment.run_sync(request, deps=ctx.deps, usage=ctx.usage).output
 
+    @orchestrator_toolset.tool
+    def atlas_last_touched(ctx: RunContext[HomeAtlasDeps], name: str) -> dict[str, Any]:
+        """Return the most recent audit event and actor for any household item."""
+
+        try:
+            return actions.last_touched(ctx.deps.session, name)
+        except HomeAtlasError as exc:
+            return {"error": str(exc)}
+
+    @orchestrator_toolset.tool
+    def atlas_list_expiring(ctx: RunContext[HomeAtlasDeps], within_days: int = 30) -> list[dict[str, Any]]:
+        """List items with expiry or renewal dates within the given number of days."""
+
+        return actions.list_expiring(ctx.deps.session, within_days=within_days)
+
     orchestrator = Agent(
         model,
         deps_type=HomeAtlasDeps,
@@ -108,6 +128,8 @@ def build_agents(model: str) -> HomeAtlasAgents:
             "You are the HomeAtlas orchestrator. Classify the user's Chinese household inventory request, "
             "delegate to exactly the relevant domain sub-agent, and combine results. "
             "Do not invent stored data. Writes must be delegated to sub-agent tools. "
+            "A request like 'put X into Y' for an unknown item is a create request; delegate it. "
+            "For audit history, expiry, or renewal questions, use the atlas_* tools directly. "
             "Return a concise Chinese answer."
         ),
         defer_model_check=True,

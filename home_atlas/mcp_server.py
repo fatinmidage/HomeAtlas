@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import anyio
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken
 from mcp.server.auth.settings import AuthSettings
@@ -55,7 +56,7 @@ def build_fastmcp(settings: Settings | None = None):
     mcp = FastMCP("HomeAtlas", auth=auth_settings, token_verifier=token_verifier)
 
     @mcp.tool()
-    def home_atlas(request: str, ctx: Context) -> dict:
+    async def home_atlas(request: str, ctx: Context) -> dict:
         """Delegate a household inventory request to the HomeAtlas orchestrator."""
 
         access_token = get_access_token()
@@ -65,9 +66,15 @@ def build_fastmcp(settings: Settings | None = None):
             bearer_token = getattr(meta, "home_atlas_bearer_token", None) if meta else None
         if bearer_token is None:
             raise UnauthorizedError("missing authenticated actor token")
-        with session_scope(engine) as session:
-            actor_id = resolve_actor_id(session, bearer_token, settings.token_map)
-            return run_home_atlas(request, session, actor_id, settings)
+
+        def _run() -> dict:
+            # Run the synchronous orchestrator (including Pydantic AI's run_sync
+            # chain) in a worker thread, where no event loop is already running.
+            with session_scope(engine) as session:
+                actor_id = resolve_actor_id(session, bearer_token, settings.token_map)
+                return run_home_atlas(request, session, actor_id, settings)
+
+        return await anyio.to_thread.run_sync(_run)
 
     return mcp
 

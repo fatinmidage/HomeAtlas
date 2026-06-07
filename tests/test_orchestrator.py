@@ -80,10 +80,18 @@ def test_home_atlas_token_verifier_maps_bearer_to_actor() -> None:
 
 
 def test_pydantic_ai_agents_construct_without_api_key(monkeypatch) -> None:
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("HOME_ATLAS_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     agents = build_agents("test")
 
     assert agents.orchestrator.name is None
+    tool_names = {
+        name
+        for toolset in agents.orchestrator.toolsets
+        if hasattr(toolset, "tools")
+        for name in toolset.tools
+    }
+    assert {"atlas_last_touched", "atlas_list_expiring"} <= tool_names
     assert should_use_ai(Settings(_env_file=None, agent_mode="auto")) is False
     assert should_use_ai(Settings(_env_file=None, agent_mode="ai")) is True
 

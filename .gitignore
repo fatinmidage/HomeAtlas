@@ -6,3 +6,5 @@ __pycache__/
 .env
 home_atlas.db
 .DS_Store
+logs/*.log
+backups/*.dump

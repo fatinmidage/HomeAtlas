@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, or_, select
 
 from home_atlas.models import (
@@ -65,7 +66,13 @@ def _location(session: Session, name: str) -> Location:
     if location is None:
         location = Location(name=name)
         session.add(location)
-        session.flush()
+        try:
+            session.flush()
+        except IntegrityError:
+            session.rollback()
+            location = session.exec(select(Location).where(Location.name == name)).first()
+            if location is None:
+                raise
     assert location.id is not None
     return location
 
@@ -412,4 +419,3 @@ def _item_dict(item: Item, location: Location) -> dict[str, Any]:
         "notes": item.notes,
         "archived": item.archived,
     }
-

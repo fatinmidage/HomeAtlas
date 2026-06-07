@@ -52,7 +52,7 @@
 - 官方 **`mcp` SDK / FastMCP**（对外 Streamable HTTP MCP 服务）
 - **PostgreSQL 16** + **SQLModel**（对象类型即模型，SQLAlchemy+Pydantic 二合一）+ **Alembic**（迁移）+ **asyncpg**（驱动）
 - 配置 **pydantic-settings** + `.env`；测试 **pytest** + **pytest-asyncio**
-- LLM provider：默认 **OpenRouter**（OpenAI 兼容，与 Hermes 模型灵活性一致），可配置
+- LLM provider：默认 **DeepSeek**（Pydantic AI 原生 provider），模型值放在 `.env` 的 `HOME_ATLAS_LLM_MODEL`
 
 ## 5. 数据模型（Ontology：Object / Link / Action / Function）
 
@@ -135,7 +135,7 @@
 
 ## 12. 我采用的默认假设（可随时推翻）
 
-- LLM provider 默认 **OpenRouter**（OpenAI 兼容），模型可配置；orchestrator 与子 Agent 可用不同模型。
+- LLM provider 默认 **DeepSeek**（Pydantic AI 原生 provider），模型值放在 `.env` 的 `HOME_ATLAS_LLM_MODEL`；orchestrator 与子 Agent 后续可扩展为不同模型。
 - 存储用 **SQLModel + Postgres**；对象类型用单表 `Item`+`kind`+`properties(JSONB)`（务实映射多对象类型）。
 - 对外只给 `home_atlas(request)` 一个委派工具（+ 可选只读搜索）；领域 MCP-per-server 仅作可选探索。
 - 只读网页看板为**可选**（nice-to-have），非必交付。
