@@ -7,6 +7,8 @@ from typing import Any
 from sqlmodel import Session
 
 from home_atlas import actions
+from home_atlas.agents import run_ai_home_atlas, should_use_ai
+from home_atlas.config import Settings
 from home_atlas.models import ItemKind
 from home_atlas.toolsets import cards_docs_toolset, equipment_toolset, perishable_toolset
 
@@ -46,7 +48,9 @@ def route_request(request: str) -> RoutedRequest:
     return RoutedRequest(domain=_classify_domain(request), intent="search", args={"query": request})
 
 
-def home_atlas(request: str, session: Session, actor_id: int) -> dict[str, Any]:
+def home_atlas(request: str, session: Session, actor_id: int, settings: Settings | None = None) -> dict[str, Any]:
+    if settings is not None and should_use_ai(settings):
+        return run_ai_home_atlas(request, session, actor_id, settings)
     routed = route_request(request)
     if routed.intent == "where_is":
         item = actions.where_is(session, routed.args["name"])
@@ -118,4 +122,3 @@ def _extract_object_name(request: str) -> str:
 def _extract_days(request: str) -> int | None:
     match = re.search(r"(\d+)\s*天", request)
     return int(match.group(1)) if match else None
-

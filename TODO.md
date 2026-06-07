@@ -11,8 +11,9 @@
 - [x] Add Docker Compose PostgreSQL for local deployment.
 - [x] Verify against the running Docker PostgreSQL server on this Mac.
 - [ ] Configure the home-server process to use `HOME_ATLAS_DATABASE_URL` and `HOME_ATLAS_TOKEN_MAP`.
-- [ ] Adapt FastMCP streamable HTTP auth so Hermes sends only `home_atlas(request)` while the server extracts Bearer headers.
-- [ ] Replace deterministic routing with Pydantic AI multi-agent delegation.
+- [x] Adapt FastMCP streamable HTTP auth so Hermes sends only `home_atlas(request)` while the server extracts Bearer headers.
+- [x] Add Pydantic AI parent/child Agent delegation with deterministic fallback when no LLM key is configured.
+- [ ] Fill `OPENROUTER_API_KEY` in local `.env` and run a live AI delegation smoke test.
 - [ ] Validate two Hermes clients: token A writes, token B reads, audit shows token A's actor.
 - [ ] Add PostgreSQL concurrent-write integration tests.
 - [ ] Add launchd or another supervisor config.

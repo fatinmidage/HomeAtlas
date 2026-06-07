@@ -90,9 +90,9 @@ def smoke(settings: Settings, *, token: str | None, item: str, location: str) ->
     engine = create_db_engine(settings)
     with session_scope(engine) as session:
         actor_id = resolve_actor_id(session, token, settings.token_map)
-        write_result = home_atlas(f"把{item}放进{location}", session, actor_id)
-        where_result = home_atlas(f"{item}在哪？", session, actor_id)
-        audit_result = home_atlas(f"上次谁动了{item}？", session, actor_id)
+        write_result = home_atlas(f"把{item}放进{location}", session, actor_id, settings)
+        where_result = home_atlas(f"{item}在哪？", session, actor_id, settings)
+        audit_result = home_atlas(f"上次谁动了{item}？", session, actor_id, settings)
     print(
         json.dumps(
             {"write": write_result, "where": where_result, "audit": audit_result},

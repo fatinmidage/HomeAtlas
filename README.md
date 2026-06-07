@@ -100,6 +100,28 @@ Set token ownership through `HOME_ATLAS_TOKEN_MAP`:
 
 The service resolves the Bearer token server-side and passes only `actor_id` into Actions, so the LLM cannot spoof the actor.
 
+Run the FastMCP streamable HTTP server with bearer authentication:
+
+```bash
+uv run python -m home_atlas.mcp_server
+```
+
+Hermes sends `Authorization: Bearer <token>` to `/mcp`. FastMCP validates the bearer token before the tool runs, then `home_atlas(request)` resolves the actor server-side.
+
+## Agent Mode
+
+HomeAtlas supports two orchestrator paths:
+
+- `HOME_ATLAS_AGENT_MODE=rules`: deterministic keyword/regex router, no LLM key required.
+- `HOME_ATLAS_AGENT_MODE=ai`: Pydantic AI parent Agent delegates to perishables, cards/docs, or equipment child Agents.
+- `HOME_ATLAS_AGENT_MODE=auto`: use AI only when `OPENROUTER_API_KEY` is present; otherwise use rules.
+
+Fill this in `.env` to enable Pydantic AI delegation:
+
+```bash
+OPENROUTER_API_KEY=...
+```
+
 ## Local HTTP Smoke Runner
 
 The stdlib runner is intentionally small and useful before wiring a full MCP deployment. It uses the same `HOME_ATLAS_DATABASE_URL` and token map as the CLI:
@@ -136,8 +158,6 @@ This routes to `card_add_item`, creates or reuses the location, upserts the item
 
 ## Remaining Production Work
 
-- Wire FastMCP streamable HTTP transport to extract `Authorization: Bearer ...` headers in deployment middleware and inject the authenticated token into MCP request meta.
-- Replace the deterministic rule router with real Pydantic AI parent/child agent delegation while preserving the same Action layer.
 - Run the two-Mac Hermes validation: token A writes, token B reads, and audit reports the original actor.
 - Add launchd or another process supervisor for the home-server Mac.
 - Add `pg_dump` backup and restore verification.

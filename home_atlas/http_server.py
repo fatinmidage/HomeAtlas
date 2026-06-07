@@ -25,7 +25,7 @@ class HomeAtlasHandler(BaseHTTPRequestHandler):
             token = _bearer_token(self.headers.get("Authorization"))
             with session_scope(self.engine) as session:
                 actor_id = resolve_actor_id(session, token, self.settings.token_map)
-                result = home_atlas(str(body.get("request", "")), session, actor_id)
+                result = home_atlas(str(body.get("request", "")), session, actor_id, self.settings)
             self._json({"result": result})
         except UnauthorizedError as exc:
             self._json({"error": str(exc)}, HTTPStatus.UNAUTHORIZED)
@@ -63,4 +63,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
