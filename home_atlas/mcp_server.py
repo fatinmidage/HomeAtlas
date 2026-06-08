@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 import anyio
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from home_atlas.config import Settings, get_settings
 from home_atlas.db import create_db_engine, create_tables, seed_people_from_tokens, session_scope
@@ -53,7 +56,29 @@ def build_fastmcp(settings: Settings | None = None):
         )
         token_verifier = HomeAtlasTokenVerifier(settings.token_map)
 
-    mcp = FastMCP("HomeAtlas", auth=auth_settings, token_verifier=token_verifier)
+    # FastMCP 默认开启 DNS-rebinding 保护，只允许 localhost 的 Host header。
+    # 经 Cloudflare 隧道访问时 Host 是公网域名，必须把它加入 allowed_hosts，否则
+    # 请求通过认证后会在 Host 校验处被 server 返回 421 Misdirected Request。
+    allowed_hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+    allowed_origins = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
+    resource_host = urlparse(settings.mcp_resource_server_url).hostname
+    if resource_host and resource_host not in ("127.0.0.1", "localhost", "::1"):
+        allowed_hosts += [resource_host, f"{resource_host}:*"]
+        allowed_origins.append(f"https://{resource_host}")
+    transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=allowed_hosts,
+        allowed_origins=allowed_origins,
+    )
+
+    # json_response=True 让 MCP 返回普通 JSON（带 Content-Length）而非 chunked SSE 流，对隧道/代理更友好。
+    mcp = FastMCP(
+        "HomeAtlas",
+        auth=auth_settings,
+        token_verifier=token_verifier,
+        json_response=True,
+        transport_security=transport_security,
+    )
 
     @mcp.tool()
     async def home_atlas(request: str, ctx: Context) -> dict:
