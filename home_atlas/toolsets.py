@@ -8,9 +8,23 @@ from sqlmodel import Session
 
 from home_atlas import actions
 from home_atlas.models import ItemDomain, ItemKind
+from home_atlas.ontology import get_registry
 
 
 Tool = Callable[..., Any]
+
+_DOMAIN_PREFIX = {
+    ItemDomain.PERISHABLE: "perishable_",
+    ItemDomain.CARDS_DOCS: "card_",
+    ItemDomain.EQUIPMENT: "equipment_",
+    ItemDomain.OTHER: "other_",
+}
+
+_DOMAIN_ALLOWED_KINDS: dict[ItemDomain, set[ItemKind]] = {
+    ItemDomain.PERISHABLE: {ItemKind.FOOD, ItemKind.MEDICINE},
+    ItemDomain.CARDS_DOCS: {ItemKind.INSURANCE_POLICY, ItemKind.PAYMENT_CARD, ItemKind.MEMBERSHIP_CARD, ItemKind.DOCUMENT},
+    ItemDomain.EQUIPMENT: {ItemKind.TOOL, ItemKind.APPLIANCE},
+}
 
 
 @dataclass(frozen=True)
@@ -25,50 +39,92 @@ class DomainToolset:
             raise AssertionError(f"{self.name} has tools outside prefix {self.prefix}: {bad}")
 
 
+def _make_guarded_add(domain: ItemDomain, allowed_kinds: set[ItemKind]) -> Tool:
+    default_kind = next(iter(allowed_kinds))
+
+    def guarded_add(
+        session: Session,
+        *,
+        actor_id: int,
+        name: str,
+        location_name: str,
+        kind: ItemKind = default_kind,
+        **kwargs: Any,
+    ) -> Any:
+        if kind not in allowed_kinds:
+            raise ValueError(f"{domain.value} toolset only accepts {sorted(k.value for k in allowed_kinds)}")
+        return actions.add_item(session, actor_id=actor_id, name=name, kind=kind, location_name=location_name, **kwargs)
+
+    return guarded_add
+
+
+def _make_domain_search(domain: ItemDomain) -> Tool:
+    def domain_search(session: Session, **kwargs: Any) -> list[dict[str, Any]]:
+        return actions.search_items(session, domain=domain, **kwargs)
+    return domain_search
+
+
+_ACTION_TO_TOOL: dict[str, Tool] = {
+    "MoveItem": actions.move_item,
+    "AdjustQuantity": actions.adjust_quantity,
+    "SetQuantity": actions.set_quantity,
+    "UpdateItem": actions.update_item,
+    "DiscardItem": actions.discard_item,
+    "UpsertCardReference": actions.upsert_card_reference,
+}
+
+_ACTION_TOOL_SUFFIX: dict[str, str] = {
+    "AddItem": "add_item",
+    "MoveItem": "move_item",
+    "AdjustQuantity": "adjust_quantity",
+    "SetQuantity": "set_quantity",
+    "UpdateItem": "update_item",
+    "UpsertCardReference": "upsert_reference",
+    "DiscardItem": "discard",
+}
+
+
+def toolset_for_domain(domain: ItemDomain) -> DomainToolset:
+    registry = get_registry()
+    prefix = _DOMAIN_PREFIX[domain]
+    allowed_kinds = _DOMAIN_ALLOWED_KINDS.get(domain, set())
+    tools: dict[str, Tool] = {}
+
+    ots = registry.object_types_for_domain(domain)
+    applicable_actions = set()
+    for ot in ots:
+        for at in registry.actions_for_object_type(ot.api_name):
+            applicable_actions.add(at.api_name)
+
+    for action_name in applicable_actions:
+        suffix = _ACTION_TOOL_SUFFIX.get(action_name)
+        if suffix is None:
+            continue
+        tool_name = f"{prefix}{suffix}"
+        if action_name == "AddItem":
+            tools[tool_name] = _make_guarded_add(domain, allowed_kinds)
+        else:
+            impl = _ACTION_TO_TOOL.get(action_name)
+            if impl:
+                tools[tool_name] = impl
+
+    tools[f"{prefix}search"] = _make_domain_search(domain)
+    if domain == ItemDomain.PERISHABLE:
+        tools[f"{prefix}list_expiring"] = actions.list_expiring
+
+    return DomainToolset(name=domain.value, prefix=prefix, tools=tools)
+
+
 def perishable_toolset() -> DomainToolset:
-    return DomainToolset(
-        name="perishables",
-        prefix="perishable_",
-        tools={
-            "perishable_add_item": _add_perishable,
-            "perishable_move_item": actions.move_item,
-            "perishable_adjust_quantity": actions.adjust_quantity,
-            "perishable_set_quantity": actions.set_quantity,
-            "perishable_discard": actions.discard_item,
-            "perishable_search": _search_perishable,
-            "perishable_list_expiring": actions.list_expiring,
-        },
-    )
+    return toolset_for_domain(ItemDomain.PERISHABLE)
 
 
 def cards_docs_toolset() -> DomainToolset:
-    return DomainToolset(
-        name="cards_docs",
-        prefix="card_",
-        tools={
-            "card_add_item": _add_document,
-            "card_upsert_reference": actions.upsert_card_reference,
-            "card_move_item": actions.move_item,
-            "card_update_item": actions.update_item,
-            "card_discard": actions.discard_item,
-            "card_search": _search_cards,
-            "card_list_expiring": actions.list_expiring,
-        },
-    )
+    return toolset_for_domain(ItemDomain.CARDS_DOCS)
 
 
 def equipment_toolset() -> DomainToolset:
-    return DomainToolset(
-        name="equipment",
-        prefix="equipment_",
-        tools={
-            "equipment_add_item": _add_equipment,
-            "equipment_move_item": actions.move_item,
-            "equipment_update_item": actions.update_item,
-            "equipment_discard": actions.discard_item,
-            "equipment_search": _search_equipment,
-        },
-    )
+    return toolset_for_domain(ItemDomain.EQUIPMENT)
 
 
 def all_toolsets() -> list[DomainToolset]:
@@ -78,58 +134,3 @@ def all_toolsets() -> list[DomainToolset]:
 def assert_tool_isolation() -> None:
     for toolset in all_toolsets():
         toolset.assert_isolated()
-
-
-def _add_perishable(
-    session: Session,
-    *,
-    actor_id: int,
-    name: str,
-    location_name: str,
-    kind: ItemKind = ItemKind.FOOD,
-    **kwargs: Any,
-) -> Any:
-    if kind not in {ItemKind.FOOD, ItemKind.MEDICINE}:
-        raise ValueError("perishable toolset only accepts food or medicine")
-    return actions.add_item(session, actor_id=actor_id, name=name, kind=kind, location_name=location_name, **kwargs)
-
-
-def _add_document(
-    session: Session,
-    *,
-    actor_id: int,
-    name: str,
-    location_name: str,
-    kind: ItemKind = ItemKind.DOCUMENT,
-    **kwargs: Any,
-) -> Any:
-    if kind not in {ItemKind.INSURANCE_POLICY, ItemKind.PAYMENT_CARD, ItemKind.MEMBERSHIP_CARD, ItemKind.DOCUMENT}:
-        raise ValueError("card/doc toolset only accepts card, policy, membership, or document")
-    return actions.add_item(session, actor_id=actor_id, name=name, kind=kind, location_name=location_name, **kwargs)
-
-
-def _add_equipment(
-    session: Session,
-    *,
-    actor_id: int,
-    name: str,
-    location_name: str,
-    kind: ItemKind = ItemKind.TOOL,
-    **kwargs: Any,
-) -> Any:
-    if kind not in {ItemKind.TOOL, ItemKind.APPLIANCE}:
-        raise ValueError("equipment toolset only accepts tool or appliance")
-    return actions.add_item(session, actor_id=actor_id, name=name, kind=kind, location_name=location_name, **kwargs)
-
-
-def _search_perishable(session: Session, **kwargs: Any) -> list[dict[str, Any]]:
-    return actions.search_items(session, domain=ItemDomain.PERISHABLE, **kwargs)
-
-
-def _search_cards(session: Session, **kwargs: Any) -> list[dict[str, Any]]:
-    return actions.search_items(session, domain=ItemDomain.CARDS_DOCS, **kwargs)
-
-
-def _search_equipment(session: Session, **kwargs: Any) -> list[dict[str, Any]]:
-    return actions.search_items(session, domain=ItemDomain.EQUIPMENT, **kwargs)
-

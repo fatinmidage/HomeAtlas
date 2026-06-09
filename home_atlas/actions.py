@@ -17,6 +17,7 @@ from home_atlas.models import (
     domain_for_kind,
     utc_now,
 )
+from home_atlas.property_schemas import validate_item_properties
 from home_atlas.security import HomeAtlasError, reject_payment_card_secrets
 
 
@@ -40,6 +41,16 @@ def _snapshot(item: Item | None) -> dict[str, Any] | None:
     }
 
 
+def _next_version(session: Session, item_id: int | None) -> int | None:
+    if item_id is None:
+        return None
+    from sqlalchemy import func
+    result = session.exec(
+        select(func.coalesce(func.max(Event.version), 0)).where(Event.item_id == item_id)
+    ).one()
+    return result + 1
+
+
 def _event(
     session: Session,
     *,
@@ -49,14 +60,16 @@ def _event(
     summary: str,
     before: dict[str, Any] | None,
 ) -> None:
+    item_id = item.id if item else None
     session.add(
         Event(
-            item_id=item.id if item else None,
+            item_id=item_id,
             actor_id=actor_id,
             action=action,
             summary=summary,
             before=before,
             after=_snapshot(item),
+            version=_next_version(session, item_id),
         )
     )
 
@@ -107,6 +120,7 @@ def add_item(
     properties = properties or {}
     if kind == ItemKind.PAYMENT_CARD:
         reject_payment_card_secrets(properties)
+    properties = validate_item_properties(kind, properties)
     location = _location(session, location_name)
     item = Item(
         name=name,
@@ -210,6 +224,8 @@ def update_item(session: Session, *, actor_id: int, item_id: int, confirm: bool 
     item = _item(session, item_id)
     if changes.get("properties") and item.kind == ItemKind.PAYMENT_CARD:
         reject_payment_card_secrets(changes["properties"])
+    if changes.get("properties"):
+        changes["properties"] = validate_item_properties(item.kind, changes["properties"])
     if {"name", "properties"} & set(changes) and not confirm:
         raise HomeAtlasError("overwriting identifying fields requires confirm=true")
     before = _snapshot(item)
@@ -246,6 +262,7 @@ def upsert_card_reference(
 ) -> Item:
     if card_type == ItemKind.PAYMENT_CARD:
         reject_payment_card_secrets(properties)
+    properties = validate_item_properties(card_type, properties)
     if card_type not in {ItemKind.PAYMENT_CARD, ItemKind.MEMBERSHIP_CARD, ItemKind.INSURANCE_POLICY, ItemKind.DOCUMENT}:
         raise HomeAtlasError("card reference kind must be payment, membership, insurance, or document")
     existing = session.exec(
@@ -375,6 +392,7 @@ def recent_activity(session: Session, limit: int = 10) -> list[dict[str, Any]]:
             "summary": event.summary,
             "before": event.before,
             "after": event.after,
+            "version": event.version,
             "created_at": event.created_at.isoformat(),
         }
         for event, person in session.exec(statement).all()

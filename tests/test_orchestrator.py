@@ -16,7 +16,7 @@ from home_atlas.toolsets import all_toolsets, assert_tool_isolation
 def test_domain_toolsets_are_prefix_isolated() -> None:
     assert_tool_isolation()
     names = {toolset.name for toolset in all_toolsets()}
-    assert names == {"perishables", "cards_docs", "equipment"}
+    assert names == {"perishable", "cards_docs", "equipment"}
 
 
 def test_orchestrator_routes_put_where_and_last_touched(session: Session, actor_id: int) -> None:
@@ -104,6 +104,30 @@ def test_pydantic_ai_agents_construct_without_api_key(monkeypatch) -> None:
     assert {"atlas_last_touched", "atlas_list_expiring", "atlas_list_items"} <= tool_names
     assert should_use_ai(Settings(_env_file=None, agent_mode="auto")) is False
     assert should_use_ai(Settings(_env_file=None, agent_mode="ai")) is True
+
+
+def test_generated_toolset_covers_registry_actions() -> None:
+    from home_atlas.models import ItemDomain
+    from home_atlas.ontology import get_registry
+    from home_atlas.toolsets import toolset_for_domain, _ACTION_TOOL_SUFFIX, _DOMAIN_PREFIX
+
+    registry = get_registry()
+    for domain in (ItemDomain.PERISHABLE, ItemDomain.CARDS_DOCS, ItemDomain.EQUIPMENT):
+        ts = toolset_for_domain(domain)
+        prefix = _DOMAIN_PREFIX[domain]
+        ots = registry.object_types_for_domain(domain)
+        registry_actions = set()
+        for ot in ots:
+            for at in registry.actions_for_object_type(ot.api_name):
+                registry_actions.add(at.api_name)
+        for action_name in registry_actions:
+            suffix = _ACTION_TOOL_SUFFIX.get(action_name)
+            if suffix is None:
+                continue
+            expected_tool = f"{prefix}{suffix}"
+            assert expected_tool in ts.tools, (
+                f"domain {domain.value} missing tool {expected_tool} for {action_name}"
+            )
 
 
 def test_agent_mode_rules_keeps_deterministic_orchestrator(session: Session, actor_id: int) -> None:

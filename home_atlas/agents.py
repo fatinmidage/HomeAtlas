@@ -11,6 +11,7 @@ from home_atlas import actions
 from home_atlas.config import Settings
 from home_atlas.llm_config import export_provider_api_key, has_configured_api_key, normalize_model_name
 from home_atlas.models import ItemDomain, ItemKind
+from home_atlas.ontology import OntologyRegistry, get_registry
 from home_atlas.security import HomeAtlasError
 
 
@@ -45,43 +46,64 @@ def run_ai_home_atlas(request: str, session: Session, actor_id: int, settings: S
     return {"intent": "ai_delegation", "answer": result.output}
 
 
+def _build_sub_agent_instructions(registry: OntologyRegistry, domain: ItemDomain) -> str:
+    ots = registry.object_types_for_domain(domain)
+    types_desc = ", ".join(f"{ot.api_name}({ot.item_kind.value})" for ot in ots)
+    lines = [
+        f"You are the {domain.value} sub-agent for HomeAtlas.",
+        f"Handle these object types: {types_desc}.",
+        "Use only the provided tools.",
+        "If a user asks to put or store an unknown item, add it instead of refusing.",
+    ]
+    if domain == ItemDomain.CARDS_DOCS:
+        lines.append("Never store full card numbers or CVV.")
+    lines.append("Return a short Chinese answer.")
+    return " ".join(lines)
+
+
+def _build_orchestrator_instructions(registry: OntologyRegistry) -> str:
+    domain_summaries = []
+    for domain in (ItemDomain.PERISHABLE, ItemDomain.CARDS_DOCS, ItemDomain.EQUIPMENT):
+        ots = registry.object_types_for_domain(domain)
+        kinds = ", ".join(ot.item_kind.value for ot in ots)
+        domain_summaries.append(f"  - {domain.value}: {kinds}")
+    domains_text = "\n".join(domain_summaries)
+
+    return (
+        "You are the HomeAtlas orchestrator. Classify the user's Chinese household inventory request, "
+        "delegate to exactly the relevant domain sub-agent, and combine results.\n"
+        f"Domains:\n{domains_text}\n"
+        "Do not invent stored data. Writes must be delegated to sub-agent tools. "
+        "A request like 'put X into Y' for an unknown item is a create request; delegate it. "
+        "For audit history, expiry, renewal, or whole-home inventory listing questions, use the atlas_* tools directly. "
+        "For broad questions like '家里有什么物品' or '列出所有物品', call atlas_list_items. "
+        "Return a concise Chinese answer."
+    )
+
+
 @lru_cache(maxsize=8)
 def build_agents(model: str) -> HomeAtlasAgents:
+    registry = get_registry()
+
     perishables = Agent(
         model,
         deps_type=HomeAtlasDeps,
         toolsets=[_perishable_ai_toolset()],
-        instructions=(
-            "You are the perishables sub-agent for HomeAtlas. "
-            "Handle only food and medicine inventory. Use only the provided tools. "
-            "If a user asks to put or store an unknown item, add it instead of refusing. "
-            "Return a short Chinese answer."
-        ),
+        instructions=_build_sub_agent_instructions(registry, ItemDomain.PERISHABLE),
         defer_model_check=True,
     )
     cards_docs = Agent(
         model,
         deps_type=HomeAtlasDeps,
         toolsets=[_cards_docs_ai_toolset()],
-        instructions=(
-            "You are the cards and documents sub-agent for HomeAtlas. "
-            "Handle documents, passports, insurance policies, payment cards, and membership cards. "
-            "Never store full card numbers or CVV. Use only the provided tools. "
-            "If a user asks to put or store an unknown item, add it instead of refusing. "
-            "Return a short Chinese answer."
-        ),
+        instructions=_build_sub_agent_instructions(registry, ItemDomain.CARDS_DOCS),
         defer_model_check=True,
     )
     equipment = Agent(
         model,
         deps_type=HomeAtlasDeps,
         toolsets=[_equipment_ai_toolset()],
-        instructions=(
-            "You are the equipment sub-agent for HomeAtlas. "
-            "Handle tools and appliances only. Use only the provided tools. "
-            "If a user asks to put or store an unknown item, add it instead of refusing. "
-            "Return a short Chinese answer."
-        ),
+        instructions=_build_sub_agent_instructions(registry, ItemDomain.EQUIPMENT),
         defer_model_check=True,
     )
 
@@ -130,15 +152,7 @@ def build_agents(model: str) -> HomeAtlasAgents:
         model,
         deps_type=HomeAtlasDeps,
         toolsets=[orchestrator_toolset],
-        instructions=(
-            "You are the HomeAtlas orchestrator. Classify the user's Chinese household inventory request, "
-            "delegate to exactly the relevant domain sub-agent, and combine results. "
-            "Do not invent stored data. Writes must be delegated to sub-agent tools. "
-            "A request like 'put X into Y' for an unknown item is a create request; delegate it. "
-            "For audit history, expiry, renewal, or whole-home inventory listing questions, use the atlas_* tools directly. "
-            "For broad questions like '家里有什么物品' or '列出所有物品', call atlas_list_items. "
-            "Return a concise Chinese answer."
-        ),
+        instructions=_build_orchestrator_instructions(registry),
         defer_model_check=True,
     )
     return HomeAtlasAgents(

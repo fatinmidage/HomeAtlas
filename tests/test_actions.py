@@ -146,3 +146,21 @@ def test_recent_and_last_touched_report_actor(session: Session, actor_id: int) -
     assert recent_activity(session, limit=1)[0]["actor"] == "你"
     assert last_touched(session, "会员卡")["actor"] == "你"
 
+
+def test_event_version_increments_per_item(session: Session, actor_id: int) -> None:
+    from home_atlas.models import Event
+
+    item = add_item(session, actor_id=actor_id, name="牛奶", kind=ItemKind.FOOD, location_name="冰箱")
+    move_item(session, actor_id=actor_id, item_id=item.id, location_name="厨房")
+    adjust_quantity(session, actor_id=actor_id, item_id=item.id, delta=2)
+
+    events = session.exec(
+        select(Event).where(Event.item_id == item.id).order_by(Event.version)
+    ).all()
+
+    assert [e.version for e in events] == [1, 2, 3]
+
+    other = add_item(session, actor_id=actor_id, name="面包", kind=ItemKind.FOOD, location_name="冰箱")
+    other_events = session.exec(select(Event).where(Event.item_id == other.id)).all()
+    assert other_events[0].version == 1
+

@@ -101,5 +101,6 @@ class Event(SQLModel, table=True):
     summary: str
     before: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
     after: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
+    version: int | None = Field(default=None)
     created_at: datetime = Field(default_factory=utc_now, index=True)
 
