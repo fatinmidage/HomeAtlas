@@ -115,6 +115,7 @@ class ActionTypeDef:
 
 @dataclass
 class OntologyRegistry:
+    schema_version: int = 1
     object_types: dict[str, ObjectTypeDef] = field(default_factory=dict)
     link_types: dict[str, LinkTypeDef] = field(default_factory=dict)
     action_types: dict[str, ActionTypeDef] = field(default_factory=dict)
@@ -227,7 +228,7 @@ class OntologyRegistry:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "schema_version": 1,
+            "schema_version": self.schema_version,
             "object_types": [ot.to_dict() for ot in self.object_types.values()],
             "link_types": [lt.to_dict() for lt in self.link_types.values()],
             "action_types": [at.to_dict() for at in self.action_types.values()],

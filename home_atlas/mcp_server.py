@@ -14,6 +14,7 @@ from home_atlas.db import create_db_engine, create_tables, seed_people_from_toke
 from home_atlas.db_isolation import grant_select_on_new_tables, verify_readonly_isolation
 from home_atlas.ontology import get_registry
 from home_atlas.orchestrator import home_atlas as run_home_atlas
+from home_atlas.schema_migration import check_schema_version
 from home_atlas.security import UnauthorizedError, resolve_actor_id
 
 
@@ -49,6 +50,7 @@ def build_fastmcp(settings: Settings | None = None):
     verify_readonly_isolation(settings)
     with session_scope(engine) as session:
         seed_people_from_tokens(session, settings.token_map)
+        check_schema_version(session)
 
     auth_settings = None
     token_verifier = None
