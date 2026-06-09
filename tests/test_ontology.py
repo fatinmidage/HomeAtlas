@@ -100,6 +100,12 @@ def test_registry_to_dict_returns_all_types(registry: OntologyRegistry) -> None:
         assert "typed_properties" in ot
 
 
+def test_keywords_for_domain_returns_non_empty(registry: OntologyRegistry) -> None:
+    for domain in (ItemDomain.PERISHABLE, ItemDomain.CARDS_DOCS, ItemDomain.EQUIPMENT):
+        keywords = registry.keywords_for_domain(domain)
+        assert len(keywords) > 0, f"no keywords for domain {domain.value}"
+
+
 def test_action_type_to_dict_excludes_implementation(registry: OntologyRegistry) -> None:
     for at in registry.action_types.values():
         d = at.to_dict()

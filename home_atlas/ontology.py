@@ -40,6 +40,7 @@ class ObjectTypeDef:
     item_kind: ItemKind
     domain: ItemDomain
     typed_properties: tuple[PropertyDef, ...] = ()
+    keywords: tuple[str, ...] = ()
     description: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -48,6 +49,7 @@ class ObjectTypeDef:
             "item_kind": self.item_kind.value,
             "domain": self.domain.value,
             "typed_properties": [p.to_dict() for p in self.typed_properties],
+            "keywords": list(self.keywords),
             "description": self.description,
         }
 
@@ -132,6 +134,13 @@ class OntologyRegistry:
             if ot.item_kind == kind:
                 return ot
         return None
+
+    def keywords_for_domain(self, domain: ItemDomain) -> set[str]:
+        result: set[str] = set()
+        for ot in self.object_types.values():
+            if ot.domain == domain:
+                result.update(ot.keywords)
+        return result
 
     def actions_for_object_type(self, api_name: str) -> list[ActionTypeDef]:
         ot = self.object_types.get(api_name)
@@ -220,6 +229,7 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
             PropertyDef("brand", str, description="品牌"),
             PropertyDef("weight", str, description="重量/容量"),
         ),
+        keywords=("食物", "食品", "牛奶", "鸡蛋"),
         description="食品 — 有保质期的消耗品",
     ),
     ObjectTypeDef(
@@ -230,6 +240,7 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
             PropertyDef("dosage", str, description="剂量"),
             PropertyDef("prescription", bool, description="是否处方药"),
         ),
+        keywords=("药", "药品"),
         description="药品 — 有保质期的医药用品",
     ),
     ObjectTypeDef(
@@ -240,6 +251,7 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
             PropertyDef("policy_number", str, description="保单号"),
             PropertyDef("provider", str, description="保险公司"),
         ),
+        keywords=("保险", "保单"),
         description="保险保单",
     ),
     ObjectTypeDef(
@@ -253,6 +265,7 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
             PropertyDef("expiry_my", str, description="有效期 MM/YY"),
             PropertyDef("physical_location", str, description="实体卡存放位置"),
         ),
+        keywords=("信用卡",),
         description="银行卡/信用卡（仅存引用信息，禁止存储完整卡号和CVV）",
     ),
     ObjectTypeDef(
@@ -263,6 +276,7 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
             PropertyDef("member_id", str, description="会员号"),
             PropertyDef("issuer", str, description="发行方"),
         ),
+        keywords=("会员卡",),
         description="会员卡",
     ),
     ObjectTypeDef(
@@ -273,6 +287,7 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
             PropertyDef("document_number", str, description="证件号"),
             PropertyDef("issuing_authority", str, description="签发机关"),
         ),
+        keywords=("护照", "证件", "卡"),
         description="证件/文书",
     ),
     ObjectTypeDef(
@@ -283,6 +298,7 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
             PropertyDef("brand", str, description="品牌"),
             PropertyDef("model", str, description="型号"),
         ),
+        keywords=("工具", "螺丝刀"),
         description="工具",
     ),
     ObjectTypeDef(
@@ -294,6 +310,7 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
             PropertyDef("model", str, description="型号"),
             PropertyDef("warranty_expiry", date, description="保修到期日"),
         ),
+        keywords=("电器", "冰箱", "洗衣机", "设备"),
         description="家电",
     ),
     ObjectTypeDef(

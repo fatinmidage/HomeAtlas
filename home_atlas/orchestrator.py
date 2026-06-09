@@ -10,7 +10,8 @@ from home_atlas import actions
 from home_atlas.agents import run_ai_home_atlas, should_use_ai
 from home_atlas.config import Settings
 from home_atlas.llm_config import ACTIVE_LLM, has_configured_api_key
-from home_atlas.models import ItemKind
+from home_atlas.models import ItemDomain, ItemKind
+from home_atlas.ontology import get_registry
 from home_atlas.toolsets import cards_docs_toolset, equipment_toolset, perishable_toolset
 
 
@@ -21,9 +22,7 @@ class RoutedRequest:
     args: dict[str, Any]
 
 
-PERISHABLE_WORDS = {"食物", "食品", "药", "药品", "过期", "临期", "牛奶", "鸡蛋"}
-CARD_WORDS = {"护照", "保险", "信用卡", "会员卡", "卡", "保单", "证件"}
-EQUIPMENT_WORDS = {"工具", "电器", "螺丝刀", "冰箱", "洗衣机", "设备"}
+INTENT_WORDS = {"过期", "临期"}
 
 
 def route_request(request: str) -> RoutedRequest:
@@ -130,12 +129,16 @@ def _put_item(session: Session, actor_id: int, routed: RoutedRequest) -> dict[st
 
 
 def _classify_domain(text: str) -> str:
-    if any(word in text for word in PERISHABLE_WORDS):
-        return "perishables"
-    if any(word in text for word in EQUIPMENT_WORDS):
-        return "equipment"
-    if any(word in text for word in CARD_WORDS):
-        return "cards_docs"
+    registry = get_registry()
+    domain_mapping = {
+        ItemDomain.PERISHABLE: "perishables",
+        ItemDomain.CARDS_DOCS: "cards_docs",
+        ItemDomain.EQUIPMENT: "equipment",
+    }
+    for domain, label in domain_mapping.items():
+        keywords = registry.keywords_for_domain(domain)
+        if any(word in text for word in keywords):
+            return label
     return "cards_docs"
 
 

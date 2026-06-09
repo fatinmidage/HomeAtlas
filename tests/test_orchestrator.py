@@ -140,6 +140,16 @@ def test_agent_mode_rules_keeps_deterministic_orchestrator(session: Session, act
     assert result["intent"] == "add_item"
 
 
+def test_classify_domain_uses_registry_keywords() -> None:
+    from home_atlas.orchestrator import _classify_domain
+
+    assert _classify_domain("牛奶") == "perishables"
+    assert _classify_domain("螺丝刀") == "equipment"
+    assert _classify_domain("护照") == "cards_docs"
+    assert _classify_domain("信用卡") == "cards_docs"
+    assert _classify_domain("洗衣机") == "equipment"
+
+
 def test_agent_mode_auto_without_key_returns_configuration_notice(
     monkeypatch,
     session: Session,
