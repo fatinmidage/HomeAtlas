@@ -24,6 +24,15 @@ class PropertyDef:
     secret: bool = False
     description: str = ""
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "type": self.python_type.__name__,
+            "required": self.required,
+            "secret": self.secret,
+            "description": self.description,
+        }
+
 
 @dataclass(frozen=True)
 class ObjectTypeDef:
@@ -32,6 +41,15 @@ class ObjectTypeDef:
     domain: ItemDomain
     typed_properties: tuple[PropertyDef, ...] = ()
     description: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "api_name": self.api_name,
+            "item_kind": self.item_kind.value,
+            "domain": self.domain.value,
+            "typed_properties": [p.to_dict() for p in self.typed_properties],
+            "description": self.description,
+        }
 
 
 @dataclass(frozen=True)
@@ -43,6 +61,16 @@ class LinkTypeDef:
     cardinality: str = "many-to-one"
     description: str = ""
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "api_name": self.api_name,
+            "source_type": self.source_type,
+            "target_type": self.target_type,
+            "fk_column": self.fk_column,
+            "cardinality": self.cardinality,
+            "description": self.description,
+        }
+
 
 @dataclass(frozen=True)
 class ActionParameterDef:
@@ -50,6 +78,14 @@ class ActionParameterDef:
     python_type: type
     required: bool = True
     description: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "type": self.python_type.__name__,
+            "required": self.required,
+            "description": self.description,
+        }
 
 
 @dataclass(frozen=True)
@@ -61,6 +97,16 @@ class ActionTypeDef:
     requires_confirm: bool = False
     description: str = ""
     implementation: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "api_name": self.api_name,
+            "event_action": self.event_action.value,
+            "applicable_to": sorted(k.value for k in self.applicable_to),
+            "parameters": [p.to_dict() for p in self.parameters],
+            "requires_confirm": self.requires_confirm,
+            "description": self.description,
+        }
 
 
 @dataclass
@@ -142,6 +188,14 @@ class OntologyRegistry:
                 f"Actions: {actions_desc or '(none)'}"
             )
         return "\n\n".join(parts)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": 1,
+            "object_types": [ot.to_dict() for ot in self.object_types.values()],
+            "link_types": [lt.to_dict() for lt in self.link_types.values()],
+            "action_types": [at.to_dict() for at in self.action_types.values()],
+        }
 
     def describe_links_for_llm(self) -> str:
         lines: list[str] = []

@@ -56,8 +56,12 @@ def test_fastmcp_exposes_single_request_argument() -> None:
             )
         )
         tools = await mcp.list_tools()
-        assert len(tools) == 1
-        return tools[0].inputSchema
+        assert len(tools) == 2
+        tool_names = {t.name for t in tools}
+        assert "home_atlas" in tool_names
+        assert "ontology_describe" in tool_names
+        ha_tool = next(t for t in tools if t.name == "home_atlas")
+        return ha_tool.inputSchema
 
     schema = asyncio.run(list_tool_schema())
     assert set(schema["properties"]) == {"request"}

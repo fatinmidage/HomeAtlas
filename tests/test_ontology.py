@@ -87,3 +87,22 @@ def test_describe_for_llm_filters_by_domain(registry: OntologyRegistry) -> None:
 
 def test_get_registry_is_singleton() -> None:
     assert get_registry() is get_registry()
+
+
+def test_registry_to_dict_returns_all_types(registry: OntologyRegistry) -> None:
+    d = registry.to_dict()
+    assert d["schema_version"] == 1
+    assert len(d["object_types"]) == len(ItemKind)
+    assert len(d["link_types"]) == 6
+    assert len(d["action_types"]) == len(EventAction)
+    for ot in d["object_types"]:
+        assert "api_name" in ot
+        assert "typed_properties" in ot
+
+
+def test_action_type_to_dict_excludes_implementation(registry: OntologyRegistry) -> None:
+    for at in registry.action_types.values():
+        d = at.to_dict()
+        assert "implementation" not in d
+        assert "api_name" in d
+        assert "parameters" in d

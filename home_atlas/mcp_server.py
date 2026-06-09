@@ -12,6 +12,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from home_atlas.config import Settings, get_settings
 from home_atlas.db import create_db_engine, create_tables, seed_people_from_tokens, session_scope
 from home_atlas.db_isolation import grant_select_on_new_tables, verify_readonly_isolation
+from home_atlas.ontology import get_registry
 from home_atlas.orchestrator import home_atlas as run_home_atlas
 from home_atlas.security import UnauthorizedError, resolve_actor_id
 
@@ -103,6 +104,12 @@ def build_fastmcp(settings: Settings | None = None):
                 return run_home_atlas(request, session, actor_id, settings)
 
         return await anyio.to_thread.run_sync(_run)
+
+    @mcp.tool()
+    async def ontology_describe() -> dict:
+        """Return the full Ontology schema: all Object Types, Link Types, and Action Types."""
+
+        return get_registry().to_dict()
 
     return mcp
 
