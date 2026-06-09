@@ -100,6 +100,7 @@ class ActionTypeDef:
     description: str = ""
     implementation: str = ""
     post_hooks: tuple[str, ...] = ()
+    required_role: str = "member"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -166,6 +167,19 @@ class OntologyRegistry:
         import importlib
         mod = importlib.import_module(module_path)
         return getattr(mod, attr)
+
+    _ROLE_HIERARCHY = {"admin": 2, "member": 1, "viewer": 0}
+
+    def check_permission(self, action_api_name: str, person_roles: list[str]) -> bool:
+        at = self.action_types.get(action_api_name)
+        if at is None:
+            return False
+        required_level = self._ROLE_HIERARCHY.get(at.required_role, 1)
+        person_level = max(
+            (self._ROLE_HIERARCHY.get(r, 0) for r in person_roles),
+            default=0,
+        )
+        return person_level >= required_level
 
     def resolve_hooks(self, api_name: str) -> list[Any]:
         at = self.action_types.get(api_name)
@@ -406,6 +420,7 @@ _ACTION_TYPES: list[ActionTypeDef] = [
         requires_confirm=True,
         description="更新物品属性",
         implementation="home_atlas.actions.update_item",
+        required_role="admin",
     ),
     ActionTypeDef(
         api_name="UpsertCardReference",
@@ -430,6 +445,7 @@ _ACTION_TYPES: list[ActionTypeDef] = [
         ),
         description="归档/丢弃物品",
         implementation="home_atlas.actions.discard_item",
+        required_role="admin",
     ),
 ]
 

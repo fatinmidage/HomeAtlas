@@ -59,6 +59,10 @@ def domain_for_kind(kind: ItemKind) -> ItemDomain:
 class Person(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(index=True, unique=True)
+    roles: list[str] = Field(
+        default_factory=lambda: ["admin"],
+        sa_column=Column(JSON, nullable=False, server_default='["admin"]'),
+    )
     created_at: datetime = Field(default_factory=utc_now)
 
 

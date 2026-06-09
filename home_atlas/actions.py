@@ -19,7 +19,7 @@ from home_atlas.models import (
 )
 from home_atlas.event_bus import get_event_bus
 from home_atlas.property_schemas import validate_item_properties
-from home_atlas.security import HomeAtlasError, reject_payment_card_secrets
+from home_atlas.security import HomeAtlasError, check_action_permission, reject_payment_card_secrets
 
 
 def _snapshot(item: Item | None) -> dict[str, Any] | None:
@@ -120,6 +120,7 @@ def add_item(
     properties: dict[str, Any] | None = None,
     notes: str | None = None,
 ) -> Item:
+    check_action_permission(session, actor_id, "AddItem")
     properties = properties or {}
     if kind == ItemKind.PAYMENT_CARD:
         reject_payment_card_secrets(properties)
@@ -156,6 +157,7 @@ def add_item(
 
 
 def move_item(session: Session, *, actor_id: int, item_id: int, location_name: str) -> Item:
+    check_action_permission(session, actor_id, "MoveItem")
     item = _item(session, item_id)
     before = _snapshot(item)
     location = _location(session, location_name)
@@ -178,6 +180,7 @@ def move_item(session: Session, *, actor_id: int, item_id: int, location_name: s
 
 
 def adjust_quantity(session: Session, *, actor_id: int, item_id: int, delta: float) -> Item:
+    check_action_permission(session, actor_id, "AdjustQuantity")
     item = _item(session, item_id)
     before = _snapshot(item)
     item.quantity = (item.quantity or 0) + delta
@@ -201,6 +204,7 @@ def adjust_quantity(session: Session, *, actor_id: int, item_id: int, delta: flo
 
 
 def set_quantity(session: Session, *, actor_id: int, item_id: int, quantity: float) -> Item:
+    check_action_permission(session, actor_id, "SetQuantity")
     if quantity < 0:
         raise HomeAtlasError("quantity cannot be negative")
     item = _item(session, item_id)
@@ -224,6 +228,7 @@ def set_quantity(session: Session, *, actor_id: int, item_id: int, quantity: flo
 
 
 def update_item(session: Session, *, actor_id: int, item_id: int, confirm: bool = False, **changes: Any) -> Item:
+    check_action_permission(session, actor_id, "UpdateItem")
     item = _item(session, item_id)
     if changes.get("properties") and item.kind == ItemKind.PAYMENT_CARD:
         reject_payment_card_secrets(changes["properties"])
@@ -263,6 +268,7 @@ def upsert_card_reference(
     card_type: ItemKind,
     properties: dict[str, Any],
 ) -> Item:
+    check_action_permission(session, actor_id, "UpsertCardReference")
     if card_type == ItemKind.PAYMENT_CARD:
         reject_payment_card_secrets(properties)
     properties = validate_item_properties(card_type, properties)
@@ -302,6 +308,7 @@ def upsert_card_reference(
 
 
 def discard_item(session: Session, *, actor_id: int, item_id: int, confirm: bool = False) -> Item:
+    check_action_permission(session, actor_id, "DiscardItem")
     if not confirm:
         raise HomeAtlasError("discard requires confirm=true")
     item = _item(session, item_id)

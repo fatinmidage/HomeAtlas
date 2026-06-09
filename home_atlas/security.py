@@ -34,6 +34,17 @@ def resolve_actor_id(session: Session, token: str | None, token_map: dict[str, s
     return person.id
 
 
+def check_action_permission(session: Session, actor_id: int, action_name: str) -> None:
+    from home_atlas.ontology import get_registry
+    person = session.get(Person, actor_id)
+    if person is None:
+        raise UnauthorizedError("unknown actor")
+    roles = person.roles if person.roles else ["viewer"]
+    registry = get_registry()
+    if not registry.check_permission(action_name, roles):
+        raise UnauthorizedError(f"role {roles} lacks permission for {action_name}")
+
+
 def reject_payment_card_secrets(properties: dict[str, Any]) -> None:
     extra_keys = set(properties) - PAYMENT_CARD_ALLOWED_KEYS
     if extra_keys:
