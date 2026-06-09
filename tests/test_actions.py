@@ -13,6 +13,7 @@ from home_atlas.actions import (
     list_expiring,
     move_item,
     recent_activity,
+    search_items,
     set_quantity,
     update_item,
     upsert_card_reference,
@@ -163,4 +164,22 @@ def test_event_version_increments_per_item(session: Session, actor_id: int) -> N
     other = add_item(session, actor_id=actor_id, name="面包", kind=ItemKind.FOOD, location_name="冰箱")
     other_events = session.exec(select(Event).where(Event.item_id == other.id)).all()
     assert other_events[0].version == 1
+
+
+def test_search_items_filters_by_property(session: Session, actor_id: int) -> None:
+    add_item(
+        session, actor_id=actor_id, name="蒙牛纯牛奶", kind=ItemKind.FOOD,
+        location_name="冰箱", properties={"brand": "蒙牛"},
+    )
+    add_item(
+        session, actor_id=actor_id, name="伊利纯牛奶", kind=ItemKind.FOOD,
+        location_name="冰箱", properties={"brand": "伊利"},
+    )
+
+    results = search_items(session, property_filter={"brand": "蒙牛"})
+    assert len(results) == 1
+    assert results[0]["name"] == "蒙牛纯牛奶"
+
+    results_all = search_items(session)
+    assert len(results_all) >= 2
 

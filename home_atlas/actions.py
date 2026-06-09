@@ -330,6 +330,7 @@ def search_items(
     location: str | None = None,
     expiring_within_days: int | None = None,
     include_archived: bool = False,
+    property_filter: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     statement = select(Item, Location).join(Location, Item.location_id == Location.id)
     if not include_archived:
@@ -351,8 +352,22 @@ def search_items(
                 (Item.renewal_date >= today) & (Item.renewal_date <= cutoff),
             )
         )
+    dialect = session.bind.dialect.name if session.bind else "sqlite"
+    if property_filter and dialect == "postgresql":
+        from sqlalchemy.dialects.postgresql import JSONB
+        from sqlalchemy import cast, type_coerce
+        import json as _json
+        statement = statement.where(
+            type_coerce(Item.properties, JSONB).op("@>")(cast(_json.dumps(property_filter), JSONB))
+        )
     rows = session.exec(statement).all()
-    return [_item_dict(item, loc) for item, loc in rows]
+    results = [_item_dict(item, loc) for item, loc in rows]
+    if property_filter and dialect != "postgresql":
+        results = [
+            r for r in results
+            if all(r.get("properties", {}).get(k) == v for k, v in property_filter.items())
+        ]
+    return results
 
 
 def get_item(session: Session, item_id: int) -> dict[str, Any]:
