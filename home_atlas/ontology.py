@@ -99,6 +99,7 @@ class ActionTypeDef:
     requires_confirm: bool = False
     description: str = ""
     implementation: str = ""
+    post_hooks: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -165,6 +166,18 @@ class OntologyRegistry:
         import importlib
         mod = importlib.import_module(module_path)
         return getattr(mod, attr)
+
+    def resolve_hooks(self, api_name: str) -> list[Any]:
+        at = self.action_types.get(api_name)
+        if at is None or not at.post_hooks:
+            return []
+        import importlib
+        hooks = []
+        for dotted in at.post_hooks:
+            module_path, _, attr = dotted.rpartition(".")
+            mod = importlib.import_module(module_path)
+            hooks.append(getattr(mod, attr))
+        return hooks
 
     def action_parameter_schema(self, api_name: str) -> dict[str, Any]:
         at = self.action_types.get(api_name)

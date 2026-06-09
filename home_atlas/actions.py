@@ -17,6 +17,7 @@ from home_atlas.models import (
     domain_for_kind,
     utc_now,
 )
+from home_atlas.event_bus import get_event_bus
 from home_atlas.property_schemas import validate_item_properties
 from home_atlas.security import HomeAtlasError, reject_payment_card_secrets
 
@@ -61,6 +62,7 @@ def _event(
     before: dict[str, Any] | None,
 ) -> None:
     item_id = item.id if item else None
+    after_snapshot = _snapshot(item)
     session.add(
         Event(
             item_id=item_id,
@@ -68,10 +70,11 @@ def _event(
             action=action,
             summary=summary,
             before=before,
-            after=_snapshot(item),
+            after=after_snapshot,
             version=_next_version(session, item_id),
         )
     )
+    get_event_bus().dispatch(action, item_id, after_snapshot)
 
 
 def _location(session: Session, name: str) -> Location:
