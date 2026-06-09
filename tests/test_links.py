@@ -4,8 +4,9 @@ import pytest
 from sqlmodel import Session
 
 from home_atlas import actions
-from home_atlas.links import traverse_link
+from home_atlas.links import auto_traverse, traverse_chain, traverse_link
 from home_atlas.models import ItemKind, Location
+from home_atlas.ontology import build_registry
 from home_atlas.security import HomeAtlasError
 
 
@@ -58,3 +59,41 @@ def test_unknown_link_raises(session: Session) -> None:
 def test_wrong_source_type_raises(session: Session) -> None:
     with pytest.raises(HomeAtlasError, match="expects source"):
         traverse_link(session, "Person", 1, "storedAt")
+
+
+def test_traverse_chain_item_to_parent_location(session: Session, actor_id: int) -> None:
+    parent = Location(name="客厅")
+    session.add(parent)
+    session.flush()
+    child = Location(name="电视柜", parent_id=parent.id)
+    session.add(child)
+    session.commit()
+
+    item = actions.add_item(
+        session, actor_id=actor_id, name="遥控器", kind=ItemKind.OTHER, location_name="电视柜"
+    )
+    results = traverse_chain(session, "Item", item.id, ["storedAt", "parentLocation"])
+    assert len(results) == 1
+    assert results[0]["name"] == "客厅"
+
+
+def test_shortest_path_item_to_event() -> None:
+    registry = build_registry()
+    path = registry.shortest_path("Item", "Event")
+    assert path == ["itemEvents"]
+
+
+def test_auto_traverse_item_to_parent(session: Session, actor_id: int) -> None:
+    parent = Location(name="卧室")
+    session.add(parent)
+    session.flush()
+    child = Location(name="床头柜", parent_id=parent.id)
+    session.add(child)
+    session.commit()
+
+    item = actions.add_item(
+        session, actor_id=actor_id, name="手表", kind=ItemKind.OTHER, location_name="床头柜"
+    )
+    results = auto_traverse(session, "Item", item.id, "Location")
+    assert len(results) == 1
+    assert results[0]["name"] == "床头柜"

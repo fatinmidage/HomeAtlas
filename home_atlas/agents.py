@@ -9,6 +9,7 @@ from sqlmodel import Session
 
 from home_atlas import actions
 from home_atlas.config import Settings
+from home_atlas.links import auto_traverse
 from home_atlas.llm_config import export_provider_api_key, has_configured_api_key, normalize_model_name
 from home_atlas.models import ItemDomain, ItemKind
 from home_atlas.ontology import OntologyRegistry, get_registry
@@ -147,6 +148,20 @@ def build_agents(model: str) -> HomeAtlasAgents:
         """List all non-archived household inventory items across every domain."""
 
         return actions.search_items(ctx.deps.session)
+
+    @orchestrator_toolset.tool
+    def atlas_traverse_links(
+        ctx: RunContext[HomeAtlasDeps],
+        source_type: str,
+        source_id: int,
+        target_type: str,
+    ) -> list[dict[str, Any]]:
+        """Traverse relationships across object types via the shortest link path."""
+
+        try:
+            return auto_traverse(ctx.deps.session, source_type, source_id, target_type)
+        except HomeAtlasError as exc:
+            return [{"error": str(exc)}]
 
     orchestrator = Agent(
         model,

@@ -51,3 +51,43 @@ def traverse_link(
 
     rows = session.execute(query, {"sid": source_id}).mappings().all()
     return [dict(row) for row in rows]
+
+
+def traverse_chain(
+    session: Session,
+    source_type: str,
+    source_id: int,
+    link_names: list[str],
+) -> list[dict[str, Any]]:
+    registry = get_registry()
+    current_type = source_type
+    current_results = [{"id": source_id}]
+
+    for link_name in link_names:
+        lt = registry.link_types.get(link_name)
+        if lt is None:
+            raise HomeAtlasError(f"unknown link type: {link_name}")
+        next_results: list[dict[str, Any]] = []
+        for item in current_results:
+            next_results.extend(
+                traverse_link(session, current_type, item["id"], link_name)
+            )
+        current_type = lt.target_type
+        current_results = next_results
+        if not current_results:
+            break
+
+    return current_results
+
+
+def auto_traverse(
+    session: Session,
+    source_type: str,
+    source_id: int,
+    target_type: str,
+) -> list[dict[str, Any]]:
+    registry = get_registry()
+    path = registry.shortest_path(source_type, target_type)
+    if not path:
+        return traverse_link(session, source_type, source_id, target_type)
+    return traverse_chain(session, source_type, source_id, path)

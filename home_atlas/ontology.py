@@ -182,6 +182,25 @@ class OntologyRegistry:
         )
         return person_level >= required_level
 
+    def shortest_path(self, source_type: str, target_type: str) -> list[str]:
+        from collections import deque
+        if source_type == target_type:
+            return []
+        adj: dict[str, list[tuple[str, str]]] = {}
+        for lt in self.link_types.values():
+            adj.setdefault(lt.source_type, []).append((lt.target_type, lt.api_name))
+        queue: deque[tuple[str, list[str]]] = deque([(source_type, [])])
+        visited: set[str] = {source_type}
+        while queue:
+            current, path = queue.popleft()
+            for neighbor, link_name in adj.get(current, []):
+                if neighbor == target_type:
+                    return path + [link_name]
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append((neighbor, path + [link_name]))
+        raise HomeAtlasError(f"no link path from {source_type} to {target_type}")
+
     def resolve_hooks(self, api_name: str) -> list[Any]:
         at = self.action_types.get(api_name)
         if at is None or not at.post_hooks:
