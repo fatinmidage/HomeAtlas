@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="HOME_ATLAS_", env_file=".env", populate_by_name=True)
 
     database_url: str = "sqlite:///home_atlas.db"
+    readonly_database_url: str = ""
     token_map: dict[str, str] = Field(default_factory=dict)
     llm_model: str = Field(default="", validation_alias=AliasChoices("llm_model", ACTIVE_LLM.app_model_env))
     llm_api_key: str | None = Field(

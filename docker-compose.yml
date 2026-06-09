@@ -6,17 +6,45 @@ services:
     environment:
       POSTGRES_DB: home_atlas
       POSTGRES_USER: home_atlas
-      POSTGRES_PASSWORD: home_atlas
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    # No host port mapping — only reachable from the internal network.
     volumes:
       - homeatlas_postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_readonly_role.sql:/docker-entrypoint-initdb.d/02-readonly-role.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U home_atlas -d home_atlas"]
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      - internal
+
+  home_atlas:
+    build: .
+    container_name: homeatlas-service
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      HOME_ATLAS_DATABASE_URL: postgresql+psycopg://home_atlas:${POSTGRES_PASSWORD}@postgres:5432/home_atlas
+      HOME_ATLAS_READONLY_DATABASE_URL: postgresql+psycopg://home_atlas_readonly:home_atlas_ro@postgres:5432/home_atlas
+      HOME_ATLAS_TOKEN_MAP: ${HOME_ATLAS_TOKEN_MAP}
+      HOME_ATLAS_AGENT_MODE: ${HOME_ATLAS_AGENT_MODE:-auto}
+      HOME_ATLAS_LLM_MODEL: ${HOME_ATLAS_LLM_MODEL:-}
+      HOME_ATLAS_LLM_API_KEY: ${HOME_ATLAS_LLM_API_KEY:-}
+      HOME_ATLAS_HOST: "0.0.0.0"
+      HOME_ATLAS_PORT: "8080"
+      HOME_ATLAS_MCP_ISSUER_URL: ${HOME_ATLAS_MCP_ISSUER_URL:-http://localhost:8080}
+      HOME_ATLAS_MCP_RESOURCE_SERVER_URL: ${HOME_ATLAS_MCP_RESOURCE_SERVER_URL:-http://localhost:8080/mcp}
+    ports:
+      - "${HOME_ATLAS_PORT:-8080}:8080"
+    networks:
+      - internal
+
+networks:
+  internal:
+    driver: bridge
 
 volumes:
   homeatlas_postgres_data:
-

@@ -127,13 +127,19 @@ HomeAtlas supports two orchestrator paths:
 
 - `HOME_ATLAS_AGENT_MODE=rules`: deterministic keyword/regex router, no LLM key required.
 - `HOME_ATLAS_AGENT_MODE=ai`: Pydantic AI parent Agent delegates to perishables, cards/docs, or equipment child Agents.
-- `HOME_ATLAS_AGENT_MODE=auto`: use AI only when `HOME_ATLAS_LLM_API_KEY` is present; otherwise use rules.
+- `HOME_ATLAS_AGENT_MODE=auto`: use AI when `HOME_ATLAS_LLM_API_KEY` or the provider key is present; otherwise return a configuration reminder to Hermes instead of silently falling back.
 
 Fill this in `.env` to enable Pydantic AI delegation:
 
 ```bash
 HOME_ATLAS_LLM_MODEL=deepseek:deepseek-chat
 HOME_ATLAS_LLM_API_KEY=...
+```
+
+If you intentionally want the deterministic keyword router without an LLM, set:
+
+```bash
+HOME_ATLAS_AGENT_MODE=rules
 ```
 
 The model value lives with the rest of the runtime configuration in `.env`. `home_atlas/llm_config.py` only defines the environment variable names and DeepSeek provider key mapping.

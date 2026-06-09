@@ -18,6 +18,9 @@ dev = [
   "pytest>=8.3",
 ]
 
+[tool.setuptools.packages.find]
+include = ["home_atlas*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

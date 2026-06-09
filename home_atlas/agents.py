@@ -120,6 +120,12 @@ def build_agents(model: str) -> HomeAtlasAgents:
 
         return actions.list_expiring(ctx.deps.session, within_days=within_days)
 
+    @orchestrator_toolset.tool
+    def atlas_list_items(ctx: RunContext[HomeAtlasDeps]) -> list[dict[str, Any]]:
+        """List all non-archived household inventory items across every domain."""
+
+        return actions.search_items(ctx.deps.session)
+
     orchestrator = Agent(
         model,
         deps_type=HomeAtlasDeps,
@@ -129,7 +135,8 @@ def build_agents(model: str) -> HomeAtlasAgents:
             "delegate to exactly the relevant domain sub-agent, and combine results. "
             "Do not invent stored data. Writes must be delegated to sub-agent tools. "
             "A request like 'put X into Y' for an unknown item is a create request; delegate it. "
-            "For audit history, expiry, or renewal questions, use the atlas_* tools directly. "
+            "For audit history, expiry, renewal, or whole-home inventory listing questions, use the atlas_* tools directly. "
+            "For broad questions like '家里有什么物品' or '列出所有物品', call atlas_list_items. "
             "Return a concise Chinese answer."
         ),
         defer_model_check=True,

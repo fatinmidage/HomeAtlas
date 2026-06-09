@@ -36,6 +36,16 @@ def test_orchestrator_routes_expiring_request() -> None:
     assert routed.args["within_days"] == 7
 
 
+def test_orchestrator_routes_whole_home_inventory_list(session: Session, actor_id: int) -> None:
+    home_atlas("把护照放进保险柜抽屉", session, actor_id)
+    home_atlas("把螺丝刀放进工具箱", session, actor_id)
+
+    result = home_atlas("家里有什么物品？", session, actor_id)
+
+    assert result["intent"] == "list_items"
+    assert {item["name"] for item in result["items"]} == {"护照", "螺丝刀"}
+
+
 def test_fastmcp_exposes_single_request_argument() -> None:
     async def list_tool_schema() -> dict:
         mcp = build_fastmcp(
@@ -91,7 +101,7 @@ def test_pydantic_ai_agents_construct_without_api_key(monkeypatch) -> None:
         if hasattr(toolset, "tools")
         for name in toolset.tools
     }
-    assert {"atlas_last_touched", "atlas_list_expiring"} <= tool_names
+    assert {"atlas_last_touched", "atlas_list_expiring", "atlas_list_items"} <= tool_names
     assert should_use_ai(Settings(_env_file=None, agent_mode="auto")) is False
     assert should_use_ai(Settings(_env_file=None, agent_mode="ai")) is True
 
@@ -100,3 +110,19 @@ def test_agent_mode_rules_keeps_deterministic_orchestrator(session: Session, act
     result = home_atlas("把护照放进保险柜抽屉", session, actor_id, Settings(_env_file=None, agent_mode="rules"))
 
     assert result["intent"] == "add_item"
+
+
+def test_agent_mode_auto_without_key_returns_configuration_notice(
+    monkeypatch,
+    session: Session,
+    actor_id: int,
+) -> None:
+    monkeypatch.delenv("HOME_ATLAS_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+
+    result = home_atlas("家里有什么物品？", session, actor_id, Settings(_env_file=None, agent_mode="auto"))
+
+    assert result["intent"] == "configuration_required"
+    assert result["agent_mode"] == "auto"
+    assert "HOME_ATLAS_LLM_API_KEY" in result["answer"]
+    assert "HOME_ATLAS_AGENT_MODE" in result["answer"]
