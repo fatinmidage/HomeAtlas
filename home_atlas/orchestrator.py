@@ -117,7 +117,7 @@ def _put_item(session: Session, actor_id: int, routed: RoutedRequest) -> dict[st
     elif routed.domain == "equipment":
         tool = equipment_toolset().tools["equipment_add_item"]
         item = tool(session, actor_id=actor_id, name=routed.args["name"], location_name=routed.args["location_name"])
-    else:
+    elif routed.domain == "cards_docs":
         tool = cards_docs_toolset().tools["card_add_item"]
         item = tool(
             session,
@@ -125,6 +125,13 @@ def _put_item(session: Session, actor_id: int, routed: RoutedRequest) -> dict[st
             name=routed.args["name"],
             location_name=routed.args["location_name"],
             kind=ItemKind.DOCUMENT,
+        )
+    else:
+        item = dispatch_action(
+            session,
+            actor_id,
+            "AddItem",
+            {"name": routed.args["name"], "location_name": routed.args["location_name"], "kind": ItemKind.OTHER},
         )
     return {"intent": "add_item", "domain": routed.domain, "item_id": item.id}
 
@@ -135,12 +142,13 @@ def _classify_domain(text: str) -> str:
         ItemDomain.PERISHABLE: "perishables",
         ItemDomain.CARDS_DOCS: "cards_docs",
         ItemDomain.EQUIPMENT: "equipment",
+        ItemDomain.OTHER: "other",
     }
     for domain, label in domain_mapping.items():
         keywords = registry.keywords_for_domain(domain)
         if any(word in text for word in keywords):
             return label
-    return "cards_docs"
+    return "other"
 
 
 def _extract_object_name(request: str) -> str:

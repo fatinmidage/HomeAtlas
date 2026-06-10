@@ -162,6 +162,14 @@ def test_classify_domain_uses_registry_keywords() -> None:
     assert _classify_domain("护照") == "cards_docs"
     assert _classify_domain("信用卡") == "cards_docs"
     assert _classify_domain("洗衣机") == "equipment"
+    assert _classify_domain("遥控器") == "other"
+
+
+def test_orchestrator_unknown_put_uses_other_domain(session: Session, actor_id: int) -> None:
+    result = home_atlas("把遥控器放进电视柜", session, actor_id)
+
+    assert result["domain"] == "other"
+    assert home_atlas("遥控器在哪？", session, actor_id)["answer"] == "遥控器 在 电视柜"
 
 
 def test_agent_mode_auto_without_key_returns_configuration_notice(

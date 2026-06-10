@@ -7,10 +7,11 @@ It exposes one high-level delegated tool, `home_atlas(request)`, while keeping w
 ## What Is Implemented
 
 - SQLModel object model: `Person`, `Location`, `Item`, `Event`
-- Ontology Actions: add, move, adjust quantity, set quantity, update, upsert card reference, discard
-- Read Functions: search, get item, where-is, expiring list, recent activity, last touched
-- Sensitive-card validation: no full 13-19 digit card numbers, no CVV, payment-card properties allow only reference fields
-- Token-to-person identity resolution
+- Ontology Actions: add, move, adjust quantity, set quantity, update, upsert card reference, discard, set person role
+- Registry-projected Read Functions: search, where-is, expiring list, recent activity, last touched
+- Sensitive-data validation across names, notes, and properties: no full 13-19 digit card numbers, no CVV/card-number keys; payment-card properties allow only reference fields
+- Token-to-person identity resolution; REST and MCP resolve actors server-side
+- RBAC defaults new people to `member`; admin-only actions include update, discard, and role changes
 - Domain toolsets with prefixes: `perishable_*`, `card_*`, `equipment_*`
 - Rule-based orchestrator behind `home_atlas(request)` for local deterministic behavior
 - FastMCP construction hook and a small stdlib HTTP runner for local smoke tests
@@ -70,6 +71,7 @@ The Python ops entrypoint does not require `psql` to be on `PATH`:
 ```bash
 export HOME_ATLAS_DATABASE_URL='postgresql+psycopg://home_atlas:home_atlas@localhost:5432/home_atlas'
 export HOME_ATLAS_TOKEN_MAP='{"you-token":"你","spouse-token":"配偶"}'
+export HOME_ATLAS_ADMINS='你'
 
 uv run python -m home_atlas.cli doctor
 uv run python -m home_atlas.cli init-db --create-database
@@ -100,6 +102,7 @@ Set token ownership through `HOME_ATLAS_TOKEN_MAP`:
 ```
 
 The service resolves the Bearer token server-side and passes only `actor_id` into Actions, so the LLM cannot spoof the actor.
+Set initial admins with `HOME_ATLAS_ADMINS` as a comma-separated name list matching `HOME_ATLAS_TOKEN_MAP` values. Existing rows keep their current roles; use the `SetPersonRole` Action to change roles with an audit trail.
 
 Run the FastMCP streamable HTTP server with bearer authentication:
 
@@ -192,7 +195,7 @@ HOME_ATLAS_INTEGRATION_DATABASE_URL='postgresql+psycopg://home_atlas:home_atlas@
   uv run pytest tests/test_postgres_integration.py
 ```
 
-The test writes multiple items concurrently into the same new location and verifies the resulting items and audit events.
+The tests write multiple items concurrently into the same new location and, when PostgreSQL is configured, concurrently update the same item to verify audit versions remain unique and ordered.
 
 ## Hermes Reminders
 
@@ -224,9 +227,10 @@ curl -X POST http://localhost:8080/mcp \
 Input flows through:
 
 1. `home_atlas.orchestrator.home_atlas()` classifies the natural-language request.
-2. The selected domain tool calls `home_atlas.actions`.
-3. Each Action validates, writes the object table, and records an `Event`.
-4. Read Functions return simple dictionaries safe for an MCP response.
+2. The selected domain tool calls the Registry-driven dispatcher.
+3. The dispatcher validates parameters, RBAC, confirmation, and invokes the Action.
+4. Each Action validates, writes the object table, records an `Event`, and EventBus handlers run only after commit succeeds.
+5. Read Functions are registered in the Ontology Registry and return dictionaries safe for an MCP response.
 
 Example code path:
 
@@ -234,7 +238,7 @@ Example code path:
 result = home_atlas("把护照放进保险柜抽屉", session, actor_id)
 ```
 
-This routes to `card_add_item`, creates or reuses the location, upserts the item, and writes an `Event` with the resolved actor.
+This routes to the cards/docs domain, creates or reuses the location, inserts the item through `AddItem`, and writes an `Event` with the resolved actor.
 
 ## Remaining Production Work
 

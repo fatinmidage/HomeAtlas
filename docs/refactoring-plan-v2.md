@@ -9,7 +9,7 @@
 > | R3 | 审计与副作用正确性（post-commit 派发 / version 并发） | 🟠 中 | ☑ |
 > | R4 | 本体一致性（命名空间统一 / 单一事实源 / 双向 Link） | 🟡 中 | ☑ |
 > | R5 | AI 与读函数全面成为 Registry 投影 | 🟡 中 | ☑ |
-> | R6 | 清尾与文档对齐 | ⚪ 低 | ☐ |
+> | R6 | 清尾与文档对齐 | ⚪ 低 | ☑ |
 
 ## Context
 
@@ -255,6 +255,8 @@ commit `refactor(R5): generate AI toolsets and read functions from registry`。
 | 3 | `grep` 确认 `resolve_hooks` / `post_hooks` 等已删符号无残留引用 |
 
 **完成标准**：commit `refactor(R6): cleanup and docs alignment`。
+
+实际结果：`uv run pytest` 全绿；规则路由未知物品兜底为 `other`；README、Hermes skill、TODO 已对齐；REST 假成功与 hook 死代码残留已复核清理。
 
 ---
 
