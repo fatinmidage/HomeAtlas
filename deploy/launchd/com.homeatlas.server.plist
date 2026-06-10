@@ -8,13 +8,13 @@
 
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/wuyingheng/项目/HomeAtlas/.venv/bin/python</string>
+    <string>/path/to/HomeAtlas/.venv/bin/python</string>
     <string>-m</string>
     <string>home_atlas.mcp_server</string>
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/wuyingheng/项目/HomeAtlas</string>
+  <string>/path/to/HomeAtlas</string>
 
   <key>RunAtLoad</key>
   <true/>
@@ -23,10 +23,10 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/Users/wuyingheng/项目/HomeAtlas/logs/homeatlas.out.log</string>
+  <string>/path/to/HomeAtlas/logs/homeatlas.out.log</string>
 
   <key>StandardErrorPath</key>
-  <string>/Users/wuyingheng/项目/HomeAtlas/logs/homeatlas.err.log</string>
+  <string>/path/to/HomeAtlas/logs/homeatlas.err.log</string>
 
   <key>EnvironmentVariables</key>
   <dict>

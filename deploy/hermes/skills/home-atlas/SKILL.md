@@ -32,7 +32,7 @@ HomeAtlas 是家里两口子共享的物品管理服务。你（Hermes）只通�
 
 本 skill 依赖一个名为 `home_atlas` 的 **MCP server** 已在 `~/.hermes/config.yaml` 中配好（HTTP + Bearer token）。没有它，`home_atlas` 工具不存在，本 skill 无从调用。配置方法见仓库 `deploy/hermes/mcp.yaml.example`。
 
-- **服务端点**（仅排错/手动验证时才需要，正常调用根本不用关心）：`http://localhost:8080/mcp` 或 `http://192.168.225.21:8080/mcp`（指向同一服务），端口 **8080**。不要去猜别的端口。
+- **服务端点**（仅排错/手动验证时才需要，正常调用根本不用关心）：`http://localhost:8080/mcp` 或你的家庭服务器局域网地址，端口 **8080**。不要去猜别的端口。
 - **用前先确认工具已注册**：在你的可用工具列表中查找 `mcp_home_atlas_home_atlas`。看到了再开始用。
 - 本 skill **自包含**，无需加载 `native-mcp`、`mcporter` 或任何其它 skill。
 
@@ -49,7 +49,7 @@ HomeAtlas 是家里两口子共享的物品管理服务。你（Hermes）只通�
    from mcp.client.streamable_http import streamablehttp_client
 
    async def main():
-       headers = {"Authorization": "Bearer you-token"}
+       headers = {"Authorization": "Bearer replace-with-token"}
        async with streamablehttp_client("http://localhost:8080/mcp", headers=headers) as (r, w, _):
            async with ClientSession(r, w) as s:
                await s.initialize()
@@ -59,7 +59,7 @@ HomeAtlas 是家里两口子共享的物品管理服务。你（Hermes）只通�
 
    asyncio.run(main())
    ```
-   Token 在 `config.yaml` 和 `项目/HomeAtlas/.env` 的 `HOME_ATLAS_TOKEN_MAP` 中；若被安全脱敏（`***`）挡住，用 `execute_code` 以 `rb` 模式读原始字节即可绕过。
+   Token 在 `config.yaml` 和 `项目/HomeAtlas/.env` 的 `HOME_ATLAS_TOKEN_MAP` 中；如果不可见或不确定，请让用户确认正确 token，不要尝试绕过安全脱敏。
 3. **一次只表达一个意图**。如果用户一句话里有多件事（"把A放进B，顺便看看C在哪"），拆成多次调用，更稳。
 4. **返回值是一个 dict**，通常含 `intent` 和 `answer` 字段。把 `answer` 转述给用户即可；需要细节时再引用其余字段（如 `items`、`event`）。
 
@@ -95,4 +95,4 @@ home_atlas(request="哪些物品 14 天内临期或待续费？")
 
 - **先确认工具已注册**：在你的可用工具列表中查找 `mcp_home_atlas_home_atlas`。看不到，说明 MCP 连接在 Hermes 启动时失败了——依次查：① server 是否在跑（`curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/mcp`，401=正常在跑）；② token 是否正确（`config.yaml` 和 `项目/HomeAtlas/.env` 的 `HOME_ATLAS_TOKEN_MAP`）；③ 改完**重启 Hermes** 让它重新连接。
 - **不要用 `curl` 手动调 `/mcp`**。这是 MCP streamable-HTTP，要走三步握手：`initialize` →（从响应头取 `Mcp-Session-Id`）→ `tools/call`，且每个请求都得带 `Accept: application/json, text/event-stream`。裸 curl 既要处理多层 shell 转义（JSON 里的 `!`、`"`），又得手工传 session id，极易反复失败——这是浪费时间的死路。
-- **要手动验证时，用 `execute_code` 一步到位**（自动完成握手与 session 管理），代码见上面「如何调用」第 2 步。Token 被安全脱敏挡住时用 `rb` 模式读原始字节。
+- **要手动验证时，用 `execute_code` 一步到位**（自动完成握手与 session 管理），代码见上面「如何调用」第 2 步。Token 不可见时请用户提供或确认。

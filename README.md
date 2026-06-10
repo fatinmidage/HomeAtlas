@@ -44,8 +44,8 @@ Then initialize the schema and seed token-mapped people:
 cp .env.example .env
 uv run python -m home_atlas.cli doctor
 uv run python -m home_atlas.cli init-db
-uv run python -m home_atlas.cli smoke --token you-token
-uv run python -m home_atlas.cli dual-smoke --writer-token you-token --reader-token spouse-token
+uv run python -m home_atlas.cli smoke --token replace-with-token-1
+uv run python -m home_atlas.cli dual-smoke --writer-token replace-with-token-1 --reader-token replace-with-token-2
 ```
 
 Expected smoke result includes:
@@ -63,25 +63,25 @@ uv run alembic upgrade head
 Example connection string:
 
 ```text
-postgresql+psycopg://home_atlas:home_atlas@localhost:5432/home_atlas
+postgresql+psycopg://home_atlas:<password>@localhost:5432/home_atlas
 ```
 
 The Python ops entrypoint does not require `psql` to be on `PATH`:
 
 ```bash
-export HOME_ATLAS_DATABASE_URL='postgresql+psycopg://home_atlas:home_atlas@localhost:5432/home_atlas'
-export HOME_ATLAS_TOKEN_MAP='{"you-token":"你","spouse-token":"配偶"}'
+export HOME_ATLAS_DATABASE_URL='postgresql+psycopg://home_atlas:<password>@localhost:5432/home_atlas'
+export HOME_ATLAS_TOKEN_MAP='{"replace-with-token-1":"你","replace-with-token-2":"配偶"}'
 export HOME_ATLAS_ADMINS='你'
 
 uv run python -m home_atlas.cli doctor
 uv run python -m home_atlas.cli init-db --create-database
-uv run python -m home_atlas.cli smoke --token you-token
+uv run python -m home_atlas.cli smoke --token replace-with-token-1
 ```
 
 If the database role already exists but the database does not, `--create-database` creates the configured database through the maintenance database named `postgres`. If your local Postgres uses your macOS user as the role, change the URL accordingly, for example:
 
 ```bash
-export HOME_ATLAS_DATABASE_URL='postgresql+psycopg://wuyingheng@localhost:5432/home_atlas'
+export HOME_ATLAS_DATABASE_URL='postgresql+psycopg://<local-user>@localhost:5432/home_atlas'
 ```
 
 ## Hermes MCP Shape
@@ -98,7 +98,7 @@ mcp_servers:
 Set token ownership through `HOME_ATLAS_TOKEN_MAP`:
 
 ```json
-{"you-token":"你","spouse-token":"配偶"}
+{"replace-with-token-1":"你","replace-with-token-2":"配偶"}
 ```
 
 The service resolves the Bearer token server-side and passes only `actor_id` into Actions, so the LLM cannot spoof the actor.
@@ -118,8 +118,8 @@ Before the two physical Hermes clients are connected, this command validates the
 
 ```bash
 uv run python -m home_atlas.cli dual-smoke \
-  --writer-token you-token \
-  --reader-token spouse-token \
+  --writer-token replace-with-token-1 \
+  --reader-token replace-with-token-2 \
   --item 双端烟测护照 \
   --location 双端烟测保险柜
 ```
@@ -131,10 +131,10 @@ endpoints all require `Authorization`; unauthenticated reads return 401.
 
 ```bash
 curl http://localhost:8080/api/objects/Food \
-  -H 'Authorization: Bearer you-token'
+  -H 'Authorization: Bearer replace-with-token-1'
 
 curl http://localhost:8080/api/ontology \
-  -H 'Authorization: Bearer you-token'
+  -H 'Authorization: Bearer replace-with-token-1'
 ```
 
 ## Agent Mode
@@ -167,10 +167,10 @@ Bare DeepSeek model names such as `deepseek-v4-flash` are normalized to Pydantic
 The launchd template lives at `deploy/launchd/com.homeatlas.server.plist`. It runs:
 
 ```bash
-/Users/wuyingheng/项目/HomeAtlas/.venv/bin/python -m home_atlas.mcp_server
+/path/to/HomeAtlas/.venv/bin/python -m home_atlas.mcp_server
 ```
 
-with `WorkingDirectory=/Users/wuyingheng/项目/HomeAtlas`, so the service reads the real local `.env`.
+with `WorkingDirectory=/path/to/HomeAtlas`, so the service reads the real local `.env`.
 
 Install on the home-server Mac:
 
@@ -204,7 +204,7 @@ uv run python -m home_atlas.cli verify-backup backups/<backup-file>.dump
 Concurrent PostgreSQL writes are covered by an opt-in integration test:
 
 ```bash
-HOME_ATLAS_INTEGRATION_DATABASE_URL='postgresql+psycopg://home_atlas:home_atlas@localhost:5432/home_atlas' \
+HOME_ATLAS_INTEGRATION_DATABASE_URL='postgresql+psycopg://home_atlas:<password>@localhost:5432/home_atlas' \
   uv run pytest tests/test_postgres_integration.py
 ```
 
@@ -230,7 +230,7 @@ Then call:
 
 ```bash
 curl -X POST http://localhost:8080/mcp \
-  -H 'Authorization: Bearer you-token' \
+  -H 'Authorization: Bearer replace-with-token-1' \
   -H 'Content-Type: application/json' \
   -d '{"request":"把护照放进保险柜抽屉"}'
 ```

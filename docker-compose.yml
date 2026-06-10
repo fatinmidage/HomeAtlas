@@ -7,10 +7,11 @@ services:
       POSTGRES_DB: home_atlas
       POSTGRES_USER: home_atlas
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      HOME_ATLAS_READONLY_PASSWORD: ${HOME_ATLAS_READONLY_PASSWORD:?set HOME_ATLAS_READONLY_PASSWORD in .env}
     # No host port mapping — only reachable from the internal network.
     volumes:
       - homeatlas_postgres_data:/var/lib/postgresql/data
-      - ./scripts/init_readonly_role.sql:/docker-entrypoint-initdb.d/02-readonly-role.sql:ro
+      - ./scripts/init_readonly_role.sh:/docker-entrypoint-initdb.d/02-readonly-role.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U home_atlas -d home_atlas"]
       interval: 5s
@@ -28,7 +29,7 @@ services:
         condition: service_healthy
     environment:
       HOME_ATLAS_DATABASE_URL: postgresql+psycopg://home_atlas:${POSTGRES_PASSWORD}@postgres:5432/home_atlas
-      HOME_ATLAS_READONLY_DATABASE_URL: postgresql+psycopg://home_atlas_readonly:home_atlas_ro@postgres:5432/home_atlas
+      HOME_ATLAS_READONLY_DATABASE_URL: postgresql+psycopg://home_atlas_readonly:${HOME_ATLAS_READONLY_PASSWORD:?set HOME_ATLAS_READONLY_PASSWORD in .env}@postgres:5432/home_atlas
       HOME_ATLAS_TOKEN_MAP: ${HOME_ATLAS_TOKEN_MAP}
       HOME_ATLAS_AGENT_MODE: ${HOME_ATLAS_AGENT_MODE:-auto}
       HOME_ATLAS_LLM_MODEL: ${HOME_ATLAS_LLM_MODEL:-}
