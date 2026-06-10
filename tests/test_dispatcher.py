@@ -1,0 +1,85 @@
+from __future__ import annotations
+
+import inspect
+
+import pytest
+from sqlmodel import Session
+
+from home_atlas.actions import add_item
+from home_atlas.dispatcher import dispatch_action
+from home_atlas.models import ItemKind, Person
+from home_atlas.ontology import build_registry
+from home_atlas.security import HomeAtlasError, UnauthorizedError
+
+
+def test_dispatcher_rejects_missing_unknown_and_wrong_type(session: Session, actor_id: int) -> None:
+    with pytest.raises(HomeAtlasError, match="location_name"):
+        dispatch_action(session, actor_id, "AddItem", {"name": "缺位置", "kind": "food"})
+
+    with pytest.raises(HomeAtlasError, match="unknown parameter: surprise"):
+        dispatch_action(
+            session,
+            actor_id,
+            "AddItem",
+            {"name": "多余参数", "kind": "food", "location_name": "冰箱", "surprise": True},
+        )
+
+    with pytest.raises(HomeAtlasError, match="quantity"):
+        dispatch_action(
+            session,
+            actor_id,
+            "SetQuantity",
+            {"item_id": 1, "quantity": "not-float"},
+        )
+
+
+def test_dispatcher_requires_confirm_for_declared_actions(session: Session, actor_id: int) -> None:
+    item = dispatch_action(
+        session,
+        actor_id,
+        "AddItem",
+        {"name": "确认测试", "kind": "tool", "location_name": "工具箱"},
+    )
+
+    with pytest.raises(HomeAtlasError, match="UpdateItem requires confirm=true"):
+        dispatch_action(session, actor_id, "UpdateItem", {"item_id": item.id, "notes": "只改备注"})
+
+    updated = dispatch_action(
+        session,
+        actor_id,
+        "UpdateItem",
+        {"item_id": item.id, "notes": "已确认"},
+        confirm=True,
+    )
+    assert updated.notes == "已确认"
+
+    with pytest.raises(HomeAtlasError, match="DiscardItem requires confirm=true"):
+        dispatch_action(session, actor_id, "DiscardItem", {"item_id": item.id})
+
+
+def test_dispatcher_enforces_rbac(session: Session) -> None:
+    admin = Person(name="管理员", roles=["admin"])
+    member = Person(name="成员", roles=["member"])
+    session.add(admin)
+    session.add(member)
+    session.commit()
+    session.refresh(admin)
+    session.refresh(member)
+
+    item = add_item(session, actor_id=admin.id, name="权限测试", kind=ItemKind.FOOD, location_name="冰箱")
+
+    with pytest.raises(UnauthorizedError, match="lacks permission"):
+        dispatch_action(session, member.id, "DiscardItem", {"item_id": item.id}, confirm=True)
+
+
+def test_registry_action_implementations_resolve_and_match_parameters() -> None:
+    registry = build_registry()
+    for action in registry.action_types.values():
+        impl = registry.resolve_action(action.api_name)
+        signature = inspect.signature(impl)
+        parameters = signature.parameters
+        has_var_kwargs = any(param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters.values())
+        for declared in action.parameters:
+            assert declared.name in parameters or has_var_kwargs, (
+                f"{action.api_name} declares {declared.name} but {impl} does not accept it"
+            )

@@ -18,6 +18,7 @@ from home_atlas.models import (
     utc_now,
 )
 from home_atlas.event_bus import get_event_bus
+from home_atlas.ontology import get_registry
 from home_atlas.property_schemas import validate_item_properties
 from home_atlas.security import HomeAtlasError, check_action_permission, reject_payment_card_secrets, scan_sensitive_text
 
@@ -495,7 +496,26 @@ def _item_dict(item: Item, location: Location) -> dict[str, Any]:
         "expiry_date": item.expiry_date.isoformat() if item.expiry_date else None,
         "renewal_date": item.renewal_date.isoformat() if item.renewal_date else None,
         "purchase_date": item.purchase_date.isoformat() if item.purchase_date else None,
-        "properties": item.properties,
+        "properties": _masked_properties(item),
         "notes": item.notes,
         "archived": item.archived,
     }
+
+
+def _masked_properties(item: Item) -> dict[str, Any]:
+    registry = get_registry()
+    ot = registry.object_type_for_kind(item.kind)
+    if ot is None:
+        return dict(item.properties or {})
+    secret_names = {prop.name for prop in ot.typed_properties if prop.secret}
+    return {
+        key: _mask_secret(value) if key in secret_names else value
+        for key, value in (item.properties or {}).items()
+    }
+
+
+def _mask_secret(value: Any) -> Any:
+    text = str(value)
+    if len(text) <= 4:
+        return "****"
+    return f"****{text[-4:]}"

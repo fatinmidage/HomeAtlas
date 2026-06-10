@@ -7,6 +7,7 @@ from typing import Any
 from sqlmodel import Session
 
 from home_atlas import actions
+from home_atlas.dispatcher import dispatch_action
 from home_atlas.models import ItemDomain, ItemKind
 from home_atlas.ontology import get_registry
 
@@ -53,7 +54,12 @@ def _make_guarded_add(domain: ItemDomain, allowed_kinds: set[ItemKind]) -> Tool:
     ) -> Any:
         if kind not in allowed_kinds:
             raise ValueError(f"{domain.value} toolset only accepts {sorted(k.value for k in allowed_kinds)}")
-        return actions.add_item(session, actor_id=actor_id, name=name, kind=kind, location_name=location_name, **kwargs)
+        return dispatch_action(
+            session,
+            actor_id,
+            "AddItem",
+            {"name": name, "kind": kind, "location_name": location_name, **kwargs},
+        )
 
     return guarded_add
 
@@ -63,15 +69,6 @@ def _make_domain_search(domain: ItemDomain) -> Tool:
         return actions.search_items(session, domain=domain, **kwargs)
     return domain_search
 
-
-_ACTION_TO_TOOL: dict[str, Tool] = {
-    "MoveItem": actions.move_item,
-    "AdjustQuantity": actions.adjust_quantity,
-    "SetQuantity": actions.set_quantity,
-    "UpdateItem": actions.update_item,
-    "DiscardItem": actions.discard_item,
-    "UpsertCardReference": actions.upsert_card_reference,
-}
 
 _ACTION_TOOL_SUFFIX: dict[str, str] = {
     "AddItem": "add_item",
@@ -104,15 +101,19 @@ def toolset_for_domain(domain: ItemDomain) -> DomainToolset:
         if action_name == "AddItem":
             tools[tool_name] = _make_guarded_add(domain, allowed_kinds)
         else:
-            impl = _ACTION_TO_TOOL.get(action_name)
-            if impl:
-                tools[tool_name] = impl
+            tools[tool_name] = _make_dispatch_tool(action_name)
 
     tools[f"{prefix}search"] = _make_domain_search(domain)
     if domain == ItemDomain.PERISHABLE:
         tools[f"{prefix}list_expiring"] = actions.list_expiring
 
     return DomainToolset(name=domain.value, prefix=prefix, tools=tools)
+
+
+def _make_dispatch_tool(action_name: str) -> Tool:
+    def dispatch_tool(session: Session, *, actor_id: int, confirm: bool = False, **params: Any) -> Any:
+        return dispatch_action(session, actor_id, action_name, params, confirm=confirm)
+    return dispatch_tool
 
 
 def perishable_toolset() -> DomainToolset:

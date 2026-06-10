@@ -5,7 +5,7 @@
 > | Phase | 主题 | 优先级 | 状态 |
 > |-------|------|--------|------|
 > | R1 | 安全堵漏（REST 认证 / RBAC / 敏感数据护栏） | 🔴 高危 | ☑ |
-> | R2 | 统一 Action Dispatcher，让 Registry 元数据真正生效 | 🟠 高 | ☐ |
+> | R2 | 统一 Action Dispatcher，让 Registry 元数据真正生效 | 🟠 高 | ☑ |
 > | R3 | 审计与副作用正确性（post-commit 派发 / version 并发） | 🟠 中 | ☐ |
 > | R4 | 本体一致性（命名空间统一 / 单一事实源 / 双向 Link） | 🟡 中 | ☐ |
 > | R5 | AI 与读函数全面成为 Registry 投影 | 🟡 中 | ☐ |
@@ -134,6 +134,8 @@ commit `refactor(R1): close REST auth, RBAC, and sensitive-data gaps`。
 
 **完成标准**：`uv run pytest` 全绿 →
 commit `refactor(R2): central action dispatcher driven by registry metadata`。
+
+实际结果：`uv run pytest` 全绿；Action 写路径已统一经 dispatcher；`post_hooks` / `resolve_hooks` 代码引用已清理。
 
 ---
 

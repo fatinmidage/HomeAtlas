@@ -99,7 +99,6 @@ class ActionTypeDef:
     requires_confirm: bool = False
     description: str = ""
     implementation: str = ""
-    post_hooks: tuple[str, ...] = ()
     required_role: str = "member"
 
     def to_dict(self) -> dict[str, Any]:
@@ -201,18 +200,6 @@ class OntologyRegistry:
                     queue.append((neighbor, path + [link_name]))
         raise HomeAtlasError(f"no link path from {source_type} to {target_type}")
 
-    def resolve_hooks(self, api_name: str) -> list[Any]:
-        at = self.action_types.get(api_name)
-        if at is None or not at.post_hooks:
-            return []
-        import importlib
-        hooks = []
-        for dotted in at.post_hooks:
-            module_path, _, attr = dotted.rpartition(".")
-            mod = importlib.import_module(module_path)
-            hooks.append(getattr(mod, attr))
-        return hooks
-
     def action_parameter_schema(self, api_name: str) -> dict[str, Any]:
         at = self.action_types.get(api_name)
         if at is None:
@@ -231,7 +218,7 @@ class OntologyRegistry:
         )
         for ot in ots:
             props_desc = ", ".join(
-                f"{p.name}({'required' if p.required else 'optional'}, {p.python_type.__name__})"
+                f"{p.name}({'required' if p.required else 'optional'}, {p.python_type.__name__}{', secret' if p.secret else ''})"
                 for p in ot.typed_properties
             )
             actions = self.actions_for_object_type(ot.api_name)
@@ -295,7 +282,7 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
         item_kind=ItemKind.INSURANCE_POLICY,
         domain=ItemDomain.CARDS_DOCS,
         typed_properties=(
-            PropertyDef("policy_number", str, description="保单号"),
+            PropertyDef("policy_number", str, secret=True, description="保单号"),
             PropertyDef("provider", str, description="保险公司"),
         ),
         keywords=("保险", "保单"),
@@ -320,7 +307,7 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
         item_kind=ItemKind.MEMBERSHIP_CARD,
         domain=ItemDomain.CARDS_DOCS,
         typed_properties=(
-            PropertyDef("member_id", str, description="会员号"),
+            PropertyDef("member_id", str, secret=True, description="会员号"),
             PropertyDef("issuer", str, description="发行方"),
         ),
         keywords=("会员卡",),
@@ -331,7 +318,7 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
         item_kind=ItemKind.DOCUMENT,
         domain=ItemDomain.CARDS_DOCS,
         typed_properties=(
-            PropertyDef("document_number", str, description="证件号"),
+            PropertyDef("document_number", str, secret=True, description="证件号"),
             PropertyDef("issuing_authority", str, description="签发机关"),
         ),
         keywords=("护照", "证件", "卡"),
@@ -393,6 +380,11 @@ _ACTION_TYPES: list[ActionTypeDef] = [
             ActionParameterDef("location_name", str, True, "存放位置"),
             ActionParameterDef("quantity", float, False, "数量"),
             ActionParameterDef("unit", str, False, "单位"),
+            ActionParameterDef("expiry_date", date, False, "过期日期"),
+            ActionParameterDef("renewal_date", date, False, "续费日期"),
+            ActionParameterDef("purchase_date", date, False, "购买日期"),
+            ActionParameterDef("properties", dict, False, "类型属性"),
+            ActionParameterDef("notes", str, False, "备注"),
         ),
         description="添加新物品",
         implementation="home_atlas.actions.add_item",
@@ -436,6 +428,17 @@ _ACTION_TYPES: list[ActionTypeDef] = [
         applicable_to=_ALL_KINDS,
         parameters=(
             ActionParameterDef("item_id", int, True, "物品 ID"),
+            ActionParameterDef("name", str, False, "物品名称"),
+            ActionParameterDef("kind", ItemKind, False, "物品类型"),
+            ActionParameterDef("location_id", int, False, "位置 ID"),
+            ActionParameterDef("quantity", float, False, "数量"),
+            ActionParameterDef("unit", str, False, "单位"),
+            ActionParameterDef("expiry_date", date, False, "过期日期"),
+            ActionParameterDef("renewal_date", date, False, "续费日期"),
+            ActionParameterDef("purchase_date", date, False, "购买日期"),
+            ActionParameterDef("properties", dict, False, "类型属性"),
+            ActionParameterDef("notes", str, False, "备注"),
+            ActionParameterDef("archived", bool, False, "是否归档"),
         ),
         requires_confirm=True,
         description="更新物品属性",

@@ -9,6 +9,7 @@ from sqlmodel import Session
 from home_atlas import actions
 from home_atlas.agents import run_ai_home_atlas, should_use_ai
 from home_atlas.config import Settings
+from home_atlas.dispatcher import dispatch_action
 from home_atlas.llm_config import ACTIVE_LLM, has_configured_api_key
 from home_atlas.models import ItemDomain, ItemKind
 from home_atlas.ontology import get_registry
@@ -102,11 +103,11 @@ def _put_item(session: Session, actor_id: int, routed: RoutedRequest) -> dict[st
     existing = actions.search_items(session, query=routed.args["name"])
     exact = [item for item in existing if item["name"] == routed.args["name"]]
     if exact:
-        item = actions.move_item(
+        item = dispatch_action(
             session,
-            actor_id=actor_id,
-            item_id=exact[0]["id"],
-            location_name=routed.args["location_name"],
+            actor_id,
+            "MoveItem",
+            {"item_id": exact[0]["id"], "location_name": routed.args["location_name"]},
         )
         return {"intent": "move_item", "domain": routed.domain, "item_id": item.id}
 

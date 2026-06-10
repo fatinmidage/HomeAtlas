@@ -9,6 +9,7 @@ from sqlmodel import Session
 
 from home_atlas import actions
 from home_atlas.config import Settings
+from home_atlas.dispatcher import dispatch_action
 from home_atlas.links import auto_traverse
 from home_atlas.llm_config import export_provider_api_key, has_configured_api_key, normalize_model_name
 from home_atlas.models import ItemDomain, ItemKind
@@ -192,14 +193,17 @@ def _perishable_ai_toolset() -> FunctionToolset[HomeAtlasDeps]:
     ) -> dict[str, Any]:
         """Add food or medicine to a household location."""
 
-        item = actions.add_item(
+        item = dispatch_action(
             ctx.deps.session,
-            actor_id=ctx.deps.actor_id,
-            name=name,
-            kind=kind,
-            location_name=location_name,
-            quantity=quantity,
-            unit=unit,
+            ctx.deps.actor_id,
+            "AddItem",
+            {
+                "name": name,
+                "kind": kind,
+                "location_name": location_name,
+                "quantity": quantity,
+                "unit": unit,
+            },
         )
         return {"id": item.id, "name": item.name, "location_id": item.location_id}
 
@@ -225,12 +229,11 @@ def _cards_docs_ai_toolset() -> FunctionToolset[HomeAtlasDeps]:
     def card_add_document(ctx: RunContext[HomeAtlasDeps], name: str, location_name: str) -> dict[str, Any]:
         """Add a document such as a passport, certificate, or policy reference."""
 
-        item = actions.add_item(
+        item = dispatch_action(
             ctx.deps.session,
-            actor_id=ctx.deps.actor_id,
-            name=name,
-            kind=ItemKind.DOCUMENT,
-            location_name=location_name,
+            ctx.deps.actor_id,
+            "AddItem",
+            {"name": name, "kind": ItemKind.DOCUMENT, "location_name": location_name},
         )
         return {"id": item.id, "name": item.name, "location_id": item.location_id}
 
@@ -249,13 +252,16 @@ def _cards_docs_ai_toolset() -> FunctionToolset[HomeAtlasDeps]:
         properties = {"issuer": issuer, "card_type": card_type, "last4": last4, "physical_location": location_name}
         if expiry_my:
             properties["expiry_my"] = expiry_my
-        item = actions.upsert_card_reference(
+        item = dispatch_action(
             ctx.deps.session,
-            actor_id=ctx.deps.actor_id,
-            name=name,
-            location_name=location_name,
-            card_type=ItemKind.PAYMENT_CARD,
-            properties=properties,
+            ctx.deps.actor_id,
+            "UpsertCardReference",
+            {
+                "name": name,
+                "location_name": location_name,
+                "card_type": ItemKind.PAYMENT_CARD,
+                "properties": properties,
+            },
         )
         return {"id": item.id, "name": item.name, "properties": item.properties}
 
@@ -286,12 +292,11 @@ def _equipment_ai_toolset() -> FunctionToolset[HomeAtlasDeps]:
     ) -> dict[str, Any]:
         """Add a tool or appliance to a household location."""
 
-        item = actions.add_item(
+        item = dispatch_action(
             ctx.deps.session,
-            actor_id=ctx.deps.actor_id,
-            name=name,
-            kind=kind,
-            location_name=location_name,
+            ctx.deps.actor_id,
+            "AddItem",
+            {"name": name, "kind": kind, "location_name": location_name},
         )
         return {"id": item.id, "name": item.name, "location_id": item.location_id}
 
