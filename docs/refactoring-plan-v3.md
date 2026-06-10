@@ -5,7 +5,7 @@
 > | Phase | 主题 | 优先级 | 状态 |
 > |-------|------|--------|------|
 > | R7 | 堵读路径泄漏链（读端点认证 / Function 权限 / 审计打码） | 🔴 高危 | ☑ |
-> | R8 | R5 真正收尾：AI 工具由 ActionTypeDef 生成 | 🟠 中 | ☐ |
+> | R8 | R5 真正收尾：AI 工具由 ActionTypeDef 生成 | 🟠 中 | ☑ |
 > | R9 | 护栏硬化与文档对齐 | 🟡 低 | ☐ |
 
 ## Context
@@ -137,6 +137,14 @@ Registry 的声明派生；新增 Action Type 后 AI Agent 无需改代码自动
 
 **完成标准**：`uv run pytest` 全绿 →
 commit `refactor(R8): derive AI toolsets from ActionTypeDef declarations`。
+
+**实际结果（2026-06-10）**：
+
+- `agents.py` 已删除 `_build_perishable_tools` / `_build_cards_docs_tools` / `_build_equipment_tools`，改为遍历 Registry 中的 `ActionTypeDef.ai_tools` 与 `FunctionDef.ai_tools` 生成 Pydantic AI toolset。
+- 工具名保持兼容：`perishable_add_item`、`card_upsert_payment_reference`、`equipment_search` 等集合与旧实现一致。
+- 新增 `AIToolDef` 声明承载工具名、领域、参数、默认值、常量与可选 adapter；付款卡引用的属性拼装由 Registry 指向 adapter，而非 domain 分支硬编码。
+- 新增自动感知演练：测试中 monkeypatch 新 `ActionTypeDef` 后，`_build_ai_toolset_for_domain(PERISHABLE)` 自动出现新工具。
+- 验证：`rg "_build_perishable_tools|_build_cards_docs_tools|_build_equipment_tools" home_atlas tests` 无残留；`uv run pytest` 通过（104 passed, 4 skipped）。
 
 ---
 

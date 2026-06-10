@@ -124,6 +124,52 @@ def test_generated_ai_toolsets_keep_existing_tool_names() -> None:
         assert set(toolset.tools) == names
 
 
+def test_generated_ai_toolset_detects_registry_action_without_agent_changes(monkeypatch) -> None:
+    from home_atlas.agents import _build_ai_toolset_for_domain, build_agents
+    from home_atlas.models import EventAction, ItemDomain, ItemKind
+    from home_atlas.ontology import AIToolDef, ActionParameterDef, ActionTypeDef, get_registry
+
+    build_agents.cache_clear()
+    registry = get_registry()
+    patched_actions = dict(registry.action_types)
+    patched_actions["PingItem"] = ActionTypeDef(
+        api_name="PingItem",
+        event_action=EventAction.UPDATE_ITEM,
+        applicable_to=frozenset({ItemKind.FOOD}),
+        parameters=(ActionParameterDef("item_id", int, True, "物品 ID"),),
+        implementation="tests.test_orchestrator._ping_item",
+        ai_tools=(
+            AIToolDef(
+                domain=ItemDomain.PERISHABLE,
+                name="perishable_ping_item",
+                parameter_names=("item_id",),
+                description="Ping a food item.",
+            ),
+        ),
+    )
+    monkeypatch.setattr(registry, "action_types", patched_actions)
+
+    toolset = _build_ai_toolset_for_domain(ItemDomain.PERISHABLE)
+
+    assert "perishable_ping_item" in toolset.tools
+
+
+def _ping_item(session: Session, *, actor_id: int, item_id: int) -> dict[str, int]:
+    return {"item_id": item_id}
+
+
+def test_generated_ai_add_item_schema_matches_action_parameter_definitions() -> None:
+    from home_atlas.agents import _build_ai_toolset_for_domain
+    from home_atlas.models import ItemDomain
+
+    tool = _build_ai_toolset_for_domain(ItemDomain.PERISHABLE).tools["perishable_add_item"]
+    schema = tool.function_schema.json_schema
+
+    assert set(schema["properties"]) == {"name", "kind", "location_name", "quantity", "unit"}
+    assert schema["required"] == ["name", "location_name"]
+    assert schema["properties"]["kind"]["default"] == "food"
+
+
 def test_generated_toolset_covers_registry_actions() -> None:
     from home_atlas.models import ItemDomain
     from home_atlas.ontology import get_registry

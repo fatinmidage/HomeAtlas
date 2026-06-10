@@ -96,6 +96,18 @@ class ActionParameterDef:
 
 
 @dataclass(frozen=True)
+class AIToolDef:
+    domain: ItemDomain
+    name: str
+    parameter_names: tuple[str, ...] = ()
+    parameters: tuple[ActionParameterDef, ...] = ()
+    defaults: dict[str, Any] = field(default_factory=dict)
+    constants: dict[str, Any] = field(default_factory=dict)
+    description: str = ""
+    adapter: str = ""
+
+
+@dataclass(frozen=True)
 class ActionTypeDef:
     api_name: str
     event_action: EventAction
@@ -105,6 +117,7 @@ class ActionTypeDef:
     description: str = ""
     implementation: str = ""
     required_role: str = "member"
+    ai_tools: tuple[AIToolDef, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -124,6 +137,7 @@ class FunctionDef:
     implementation: str = ""
     description: str = ""
     required_role: str = "viewer"
+    ai_tools: tuple[AIToolDef, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -490,6 +504,29 @@ _ACTION_TYPES: list[ActionTypeDef] = [
         ),
         description="添加新物品",
         implementation="home_atlas.actions.add_item",
+        ai_tools=(
+            AIToolDef(
+                domain=ItemDomain.PERISHABLE,
+                name="perishable_add_item",
+                parameter_names=("name", "location_name", "kind", "quantity", "unit"),
+                defaults={"kind": ItemKind.FOOD},
+                description="Add food or medicine to a household location.",
+            ),
+            AIToolDef(
+                domain=ItemDomain.CARDS_DOCS,
+                name="card_add_document",
+                parameter_names=("name", "location_name"),
+                constants={"kind": ItemKind.DOCUMENT},
+                description="Add a document such as a passport, certificate, or policy reference.",
+            ),
+            AIToolDef(
+                domain=ItemDomain.EQUIPMENT,
+                name="equipment_add_item",
+                parameter_names=("name", "location_name", "kind"),
+                defaults={"kind": ItemKind.TOOL},
+                description="Add a tool or appliance to a household location.",
+            ),
+        ),
     ),
     ActionTypeDef(
         api_name="MoveItem",
@@ -559,6 +596,23 @@ _ACTION_TYPES: list[ActionTypeDef] = [
         ),
         description="新增或更新卡/证件引用",
         implementation="home_atlas.actions.upsert_card_reference",
+        ai_tools=(
+            AIToolDef(
+                domain=ItemDomain.CARDS_DOCS,
+                name="card_upsert_payment_reference",
+                parameter_names=("name", "location_name", "issuer", "card_type", "last4", "expiry_my"),
+                parameters=(
+                    ActionParameterDef("name", str, True, "卡名称"),
+                    ActionParameterDef("location_name", str, True, "存放位置"),
+                    ActionParameterDef("issuer", str, True, "发卡机构"),
+                    ActionParameterDef("card_type", str, True, "卡类型"),
+                    ActionParameterDef("last4", str, True, "末四位"),
+                    ActionParameterDef("expiry_my", str, False, "到期月/年"),
+                ),
+                description="Store a payment card reference using issuer, card type, last4, and optional expiry only.",
+                adapter="home_atlas.agents._payment_card_reference_params",
+            ),
+        ),
     ),
     ActionTypeDef(
         api_name="DiscardItem",
@@ -600,18 +654,58 @@ _FUNCTION_DEFS: list[FunctionDef] = [
         ),
         implementation="home_atlas.actions.search_items",
         description="搜索库存物品",
+        ai_tools=(
+            AIToolDef(
+                domain=ItemDomain.PERISHABLE,
+                name="perishable_search",
+                parameter_names=("query",),
+                constants={"domain": ItemDomain.PERISHABLE},
+                description="Search food and medicine inventory.",
+            ),
+            AIToolDef(
+                domain=ItemDomain.CARDS_DOCS,
+                name="card_search",
+                parameter_names=("query",),
+                constants={"domain": ItemDomain.CARDS_DOCS},
+                description="Search documents, policies, payment cards, and membership cards.",
+            ),
+            AIToolDef(
+                domain=ItemDomain.EQUIPMENT,
+                name="equipment_search",
+                parameter_names=("query",),
+                constants={"domain": ItemDomain.EQUIPMENT},
+                description="Search tools and appliances.",
+            ),
+        ),
     ),
     FunctionDef(
         api_name="where_is",
         parameters=(ActionParameterDef("name", str, True, "物品名称"),),
         implementation="home_atlas.actions.where_is",
         description="查询物品位置",
+        ai_tools=(
+            AIToolDef(
+                domain=ItemDomain.CARDS_DOCS,
+                name="card_where_is",
+                parameter_names=("name",),
+                description="Find where a document or card is stored.",
+            ),
+        ),
     ),
     FunctionDef(
         api_name="list_expiring",
         parameters=(ActionParameterDef("within_days", int, False, "临期天数"),),
         implementation="home_atlas.actions.list_expiring",
         description="列出即将过期或续费的物品",
+        ai_tools=(
+            AIToolDef(
+                domain=ItemDomain.PERISHABLE,
+                name="perishable_list_expiring",
+                parameter_names=("within_days",),
+                defaults={"within_days": 30},
+                description="List food and medicine expiring within the given number of days.",
+            ),
+        ),
     ),
     FunctionDef(
         api_name="recent_activity",

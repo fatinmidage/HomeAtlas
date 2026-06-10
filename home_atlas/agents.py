@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib
+import inspect
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
@@ -9,11 +11,11 @@ from sqlmodel import Session
 
 from home_atlas import actions
 from home_atlas.config import Settings
-from home_atlas.dispatcher import dispatch_action
+from home_atlas.dispatcher import dispatch_action, dispatch_function
 from home_atlas.links import auto_traverse
 from home_atlas.llm_config import export_provider_api_key, has_configured_api_key, normalize_model_name
 from home_atlas.models import ItemDomain, ItemKind
-from home_atlas.ontology import OntologyRegistry, get_registry
+from home_atlas.ontology import AIToolDef, ActionParameterDef, ActionTypeDef, FunctionDef, OntologyRegistry, get_registry
 from home_atlas.security import HomeAtlasError
 
 
@@ -180,140 +182,145 @@ def build_agents(model: str) -> HomeAtlasAgents:
 
 
 def _build_ai_toolset_for_domain(domain: ItemDomain) -> FunctionToolset[HomeAtlasDeps]:
-    if domain == ItemDomain.PERISHABLE:
-        return _build_perishable_tools()
-    if domain == ItemDomain.CARDS_DOCS:
-        return _build_cards_docs_tools()
-    if domain == ItemDomain.EQUIPMENT:
-        return _build_equipment_tools()
-    raise ValueError(f"unsupported AI toolset domain: {domain}")
+    registry = get_registry()
+    ids = {
+        ItemDomain.PERISHABLE: "home_atlas_perishables",
+        ItemDomain.CARDS_DOCS: "home_atlas_cards_docs",
+        ItemDomain.EQUIPMENT: "home_atlas_equipment",
+    }
+    if domain not in ids:
+        raise ValueError(f"unsupported AI toolset domain: {domain}")
 
-
-def _build_perishable_tools() -> FunctionToolset[HomeAtlasDeps]:
-    toolset = FunctionToolset[HomeAtlasDeps](id="home_atlas_perishables")
-
-    @toolset.tool
-    def perishable_add_item(
-        ctx: RunContext[HomeAtlasDeps],
-        name: str,
-        location_name: str,
-        kind: ItemKind = ItemKind.FOOD,
-        quantity: float | None = None,
-        unit: str | None = None,
-    ) -> dict[str, Any]:
-        """Add food or medicine to a household location."""
-
-        item = dispatch_action(
-            ctx.deps.session,
-            ctx.deps.actor_id,
-            "AddItem",
-            {
-                "name": name,
-                "kind": kind,
-                "location_name": location_name,
-                "quantity": quantity,
-                "unit": unit,
-            },
-        )
-        return {"id": item.id, "name": item.name, "location_id": item.location_id}
-
-    @toolset.tool
-    def perishable_search(ctx: RunContext[HomeAtlasDeps], query: str | None = None) -> list[dict[str, Any]]:
-        """Search food and medicine inventory."""
-
-        return actions.search_items(ctx.deps.session, query=query, domain=ItemDomain.PERISHABLE)
-
-    @toolset.tool
-    def perishable_list_expiring(ctx: RunContext[HomeAtlasDeps], within_days: int = 30) -> list[dict[str, Any]]:
-        """List food and medicine expiring within the given number of days."""
-
-        return actions.list_expiring(ctx.deps.session, within_days=within_days)
-
+    toolset = FunctionToolset[HomeAtlasDeps](id=ids[domain])
+    for action in registry.action_types.values():
+        for tool_def in action.ai_tools:
+            if tool_def.domain == domain:
+                toolset.add_function(
+                    _make_action_tool(action, tool_def),
+                    takes_ctx=True,
+                    name=tool_def.name,
+                    description=tool_def.description or action.description,
+                )
+    for function in registry.function_defs.values():
+        for tool_def in function.ai_tools:
+            if tool_def.domain == domain:
+                toolset.add_function(
+                    _make_function_tool(function, tool_def),
+                    takes_ctx=True,
+                    name=tool_def.name,
+                    description=tool_def.description or function.description,
+                )
     return toolset
 
 
-def _build_cards_docs_tools() -> FunctionToolset[HomeAtlasDeps]:
-    toolset = FunctionToolset[HomeAtlasDeps](id="home_atlas_cards_docs")
+def _make_action_tool(action: ActionTypeDef, tool_def: AIToolDef):
+    parameter_defs = _tool_parameter_defs(action.parameters, tool_def)
+    adapter = _resolve_adapter(tool_def.adapter)
 
-    @toolset.tool
-    def card_add_document(ctx: RunContext[HomeAtlasDeps], name: str, location_name: str) -> dict[str, Any]:
-        """Add a document such as a passport, certificate, or policy reference."""
+    def generated_tool(ctx: RunContext[HomeAtlasDeps], **kwargs: Any) -> Any:
+        params = {**tool_def.constants, **kwargs}
+        if adapter is not None:
+            params = adapter(**params)
+        item = dispatch_action(ctx.deps.session, ctx.deps.actor_id, action.api_name, params)
+        return _tool_result(item)
 
-        item = dispatch_action(
-            ctx.deps.session,
-            ctx.deps.actor_id,
-            "AddItem",
-            {"name": name, "kind": ItemKind.DOCUMENT, "location_name": location_name},
+    return _with_tool_signature(generated_tool, tool_def.name, tool_def.description or action.description, parameter_defs, tool_def)
+
+
+def _make_function_tool(function: FunctionDef, tool_def: AIToolDef):
+    parameter_defs = _tool_parameter_defs(function.parameters, tool_def)
+
+    def generated_tool(ctx: RunContext[HomeAtlasDeps], **kwargs: Any) -> Any:
+        params = {**tool_def.constants, **kwargs}
+        return dispatch_function(ctx.deps.session, ctx.deps.actor_id, function.api_name, params)
+
+    return _with_tool_signature(generated_tool, tool_def.name, tool_def.description or function.description, parameter_defs, tool_def)
+
+
+def _tool_parameter_defs(
+    declared_parameters: tuple[ActionParameterDef, ...],
+    tool_def: AIToolDef,
+) -> tuple[ActionParameterDef, ...]:
+    if tool_def.parameters:
+        by_name = {param.name: param for param in tool_def.parameters}
+    else:
+        by_name = {param.name: param for param in declared_parameters}
+    return tuple(by_name[name] for name in tool_def.parameter_names)
+
+
+def _with_tool_signature(
+    func,
+    name: str,
+    description: str,
+    parameter_defs: tuple[ActionParameterDef, ...],
+    tool_def: AIToolDef,
+):
+    parameters = [
+        inspect.Parameter(
+            "ctx",
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            annotation=RunContext[HomeAtlasDeps],
         )
-        return {"id": item.id, "name": item.name, "location_id": item.location_id}
-
-    @toolset.tool
-    def card_upsert_payment_reference(
-        ctx: RunContext[HomeAtlasDeps],
-        name: str,
-        location_name: str,
-        issuer: str,
-        card_type: str,
-        last4: str,
-        expiry_my: str | None = None,
-    ) -> dict[str, Any]:
-        """Store a payment card reference using issuer, card type, last4, and optional expiry only."""
-
-        properties = {"issuer": issuer, "card_type": card_type, "last4": last4, "physical_location": location_name}
-        if expiry_my:
-            properties["expiry_my"] = expiry_my
-        item = dispatch_action(
-            ctx.deps.session,
-            ctx.deps.actor_id,
-            "UpsertCardReference",
-            {
-                "name": name,
-                "location_name": location_name,
-                "card_type": ItemKind.PAYMENT_CARD,
-                "properties": properties,
-            },
+    ]
+    for param in parameter_defs:
+        default = inspect.Parameter.empty
+        if param.name in tool_def.defaults:
+            default = tool_def.defaults[param.name]
+        elif not param.required:
+            default = None
+        parameters.append(
+            inspect.Parameter(
+                param.name,
+                inspect.Parameter.KEYWORD_ONLY,
+                default=default,
+                annotation=param.python_type,
+            )
         )
-        return {"id": item.id, "name": item.name, "properties": item.properties}
-
-    @toolset.tool
-    def card_search(ctx: RunContext[HomeAtlasDeps], query: str | None = None) -> list[dict[str, Any]]:
-        """Search documents, policies, payment cards, and membership cards."""
-
-        return actions.search_items(ctx.deps.session, query=query, domain=ItemDomain.CARDS_DOCS)
-
-    @toolset.tool
-    def card_where_is(ctx: RunContext[HomeAtlasDeps], name: str) -> dict[str, Any]:
-        """Find where a document or card is stored."""
-
-        return actions.where_is(ctx.deps.session, name)
-
-    return toolset
+    func.__name__ = name
+    func.__doc__ = description
+    func.__annotations__ = {
+        "ctx": RunContext[HomeAtlasDeps],
+        **{param.name: param.python_type for param in parameter_defs},
+        "return": Any,
+    }
+    func.__signature__ = inspect.Signature(parameters, return_annotation=Any)
+    return func
 
 
-def _build_equipment_tools() -> FunctionToolset[HomeAtlasDeps]:
-    toolset = FunctionToolset[HomeAtlasDeps](id="home_atlas_equipment")
+def _resolve_adapter(adapter_path: str):
+    if not adapter_path:
+        return None
+    module_path, _, attr = adapter_path.rpartition(".")
+    module = importlib.import_module(module_path)
+    return getattr(module, attr)
 
-    @toolset.tool
-    def equipment_add_item(
-        ctx: RunContext[HomeAtlasDeps],
-        name: str,
-        location_name: str,
-        kind: ItemKind = ItemKind.TOOL,
-    ) -> dict[str, Any]:
-        """Add a tool or appliance to a household location."""
 
-        item = dispatch_action(
-            ctx.deps.session,
-            ctx.deps.actor_id,
-            "AddItem",
-            {"name": name, "kind": kind, "location_name": location_name},
-        )
-        return {"id": item.id, "name": item.name, "location_id": item.location_id}
+def _payment_card_reference_params(
+    *,
+    name: str,
+    location_name: str,
+    issuer: str,
+    card_type: str,
+    last4: str,
+    expiry_my: str | None = None,
+) -> dict[str, Any]:
+    properties = {"issuer": issuer, "card_type": card_type, "last4": last4, "physical_location": location_name}
+    if expiry_my:
+        properties["expiry_my"] = expiry_my
+    return {
+        "name": name,
+        "location_name": location_name,
+        "card_type": ItemKind.PAYMENT_CARD,
+        "properties": properties,
+    }
 
-    @toolset.tool
-    def equipment_search(ctx: RunContext[HomeAtlasDeps], query: str | None = None) -> list[dict[str, Any]]:
-        """Search tools and appliances."""
 
-        return actions.search_items(ctx.deps.session, query=query, domain=ItemDomain.EQUIPMENT)
-
-    return toolset
+def _tool_result(value: Any) -> Any:
+    if hasattr(value, "id") and hasattr(value, "name"):
+        result = {"id": value.id, "name": value.name}
+        if hasattr(value, "location_id"):
+            result["location_id"] = value.location_id
+        if hasattr(value, "properties") and value.properties:
+            result["properties"] = value.properties
+        return result
+    return value
