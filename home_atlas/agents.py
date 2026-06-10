@@ -90,21 +90,21 @@ def build_agents(model: str) -> HomeAtlasAgents:
     perishables = Agent(
         model,
         deps_type=HomeAtlasDeps,
-        toolsets=[_perishable_ai_toolset()],
+        toolsets=[_build_ai_toolset_for_domain(ItemDomain.PERISHABLE)],
         instructions=_build_sub_agent_instructions(registry, ItemDomain.PERISHABLE),
         defer_model_check=True,
     )
     cards_docs = Agent(
         model,
         deps_type=HomeAtlasDeps,
-        toolsets=[_cards_docs_ai_toolset()],
+        toolsets=[_build_ai_toolset_for_domain(ItemDomain.CARDS_DOCS)],
         instructions=_build_sub_agent_instructions(registry, ItemDomain.CARDS_DOCS),
         defer_model_check=True,
     )
     equipment = Agent(
         model,
         deps_type=HomeAtlasDeps,
-        toolsets=[_equipment_ai_toolset()],
+        toolsets=[_build_ai_toolset_for_domain(ItemDomain.EQUIPMENT)],
         instructions=_build_sub_agent_instructions(registry, ItemDomain.EQUIPMENT),
         defer_model_check=True,
     )
@@ -179,7 +179,17 @@ def build_agents(model: str) -> HomeAtlasAgents:
     )
 
 
-def _perishable_ai_toolset() -> FunctionToolset[HomeAtlasDeps]:
+def _build_ai_toolset_for_domain(domain: ItemDomain) -> FunctionToolset[HomeAtlasDeps]:
+    if domain == ItemDomain.PERISHABLE:
+        return _build_perishable_tools()
+    if domain == ItemDomain.CARDS_DOCS:
+        return _build_cards_docs_tools()
+    if domain == ItemDomain.EQUIPMENT:
+        return _build_equipment_tools()
+    raise ValueError(f"unsupported AI toolset domain: {domain}")
+
+
+def _build_perishable_tools() -> FunctionToolset[HomeAtlasDeps]:
     toolset = FunctionToolset[HomeAtlasDeps](id="home_atlas_perishables")
 
     @toolset.tool
@@ -222,7 +232,7 @@ def _perishable_ai_toolset() -> FunctionToolset[HomeAtlasDeps]:
     return toolset
 
 
-def _cards_docs_ai_toolset() -> FunctionToolset[HomeAtlasDeps]:
+def _build_cards_docs_tools() -> FunctionToolset[HomeAtlasDeps]:
     toolset = FunctionToolset[HomeAtlasDeps](id="home_atlas_cards_docs")
 
     @toolset.tool
@@ -280,7 +290,7 @@ def _cards_docs_ai_toolset() -> FunctionToolset[HomeAtlasDeps]:
     return toolset
 
 
-def _equipment_ai_toolset() -> FunctionToolset[HomeAtlasDeps]:
+def _build_equipment_tools() -> FunctionToolset[HomeAtlasDeps]:
     toolset = FunctionToolset[HomeAtlasDeps](id="home_atlas_equipment")
 
     @toolset.tool

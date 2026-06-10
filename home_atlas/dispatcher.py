@@ -31,6 +31,16 @@ def dispatch_action(
     return impl(session, actor_id=actor_id, **validated)
 
 
+def dispatch_function(session: Session, api_name: str, params: dict[str, Any]) -> Any:
+    registry = get_registry()
+    function = registry.function_defs.get(api_name)
+    if function is None:
+        raise HomeAtlasError(f"unknown function: {api_name}")
+    validated = _validate_params(function.parameters, params)
+    impl = registry.resolve_function(api_name)
+    return impl(session, **validated)
+
+
 def _validate_params(defs: tuple[ActionParameterDef, ...], params: dict[str, Any]) -> dict[str, Any]:
     declared = {param.name: param for param in defs}
     missing = [name for name, param in declared.items() if param.required and name not in params]
@@ -61,6 +71,17 @@ def _coerce_value(param: ActionParameterDef, value: Any) -> Any:
             return value if isinstance(value, expected) else expected(value)
         if expected is date and isinstance(value, str):
             return date.fromisoformat(value)
+        if expected is bool and isinstance(value, str):
+            lowered = value.lower()
+            if lowered in {"true", "1", "yes"}:
+                return True
+            if lowered in {"false", "0", "no"}:
+                return False
+            raise ValueError(value)
+        if expected is int and isinstance(value, str):
+            return int(value)
+        if expected is float and isinstance(value, str):
+            return float(value)
         if expected is float and isinstance(value, int):
             return float(value)
         if expected is dict and isinstance(value, dict):

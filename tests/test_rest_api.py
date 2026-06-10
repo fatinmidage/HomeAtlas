@@ -151,3 +151,25 @@ def test_secret_properties_are_masked_in_rest_reads(tmp_path: Path) -> None:
 def test_secret_properties_are_described_for_llm() -> None:
     text = get_registry().describe_for_llm()
     assert "document_number(optional, str, secret)" in text
+
+
+def test_rest_registered_functions_are_callable(tmp_path: Path) -> None:
+    client, _ = _build_test_app(tmp_path)
+    headers = {"Authorization": "Bearer test-token"}
+    client.post("/api/actions/AddItem", json={
+        "params": {"name": "函数测试物品", "kind": "food", "location_name": "冰箱"},
+    }, headers=headers)
+
+    calls = {
+        "search_items": {"query": "函数测试"},
+        "where_is": {"name": "函数测试物品"},
+        "list_expiring": {"within_days": "30"},
+        "recent_activity": {"limit": "5"},
+        "last_touched": {"name": "函数测试物品"},
+    }
+    for function_name, params in calls.items():
+        response = client.get(f"/api/functions/{function_name}", params=params)
+        assert response.status_code == 200, (function_name, response.text)
+
+    response = client.get("/api/functions/not_registered")
+    assert response.status_code == 404

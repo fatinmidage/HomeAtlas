@@ -110,6 +110,20 @@ def test_pydantic_ai_agents_construct_without_api_key(monkeypatch) -> None:
     assert should_use_ai(Settings(_env_file=None, agent_mode="ai")) is True
 
 
+def test_generated_ai_toolsets_keep_existing_tool_names() -> None:
+    from home_atlas.agents import _build_ai_toolset_for_domain
+    from home_atlas.models import ItemDomain
+
+    expected = {
+        ItemDomain.PERISHABLE: {"perishable_add_item", "perishable_search", "perishable_list_expiring"},
+        ItemDomain.CARDS_DOCS: {"card_add_document", "card_upsert_payment_reference", "card_search", "card_where_is"},
+        ItemDomain.EQUIPMENT: {"equipment_add_item", "equipment_search"},
+    }
+    for domain, names in expected.items():
+        toolset = _build_ai_toolset_for_domain(domain)
+        assert set(toolset.tools) == names
+
+
 def test_generated_toolset_covers_registry_actions() -> None:
     from home_atlas.models import ItemDomain
     from home_atlas.ontology import get_registry

@@ -117,12 +117,30 @@ class ActionTypeDef:
         }
 
 
+@dataclass(frozen=True)
+class FunctionDef:
+    api_name: str
+    parameters: tuple[ActionParameterDef, ...] = ()
+    implementation: str = ""
+    description: str = ""
+    required_role: str = "viewer"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "api_name": self.api_name,
+            "parameters": [p.to_dict() for p in self.parameters],
+            "description": self.description,
+            "required_role": self.required_role,
+        }
+
+
 @dataclass
 class OntologyRegistry:
     schema_version: int = 1
     object_types: dict[str, ObjectTypeDef] = field(default_factory=dict)
     link_types: dict[str, LinkTypeDef] = field(default_factory=dict)
     action_types: dict[str, ActionTypeDef] = field(default_factory=dict)
+    function_defs: dict[str, FunctionDef] = field(default_factory=dict)
 
     def register_object_type(self, obj: ObjectTypeDef) -> None:
         self.object_types[obj.api_name] = obj
@@ -132,6 +150,9 @@ class OntologyRegistry:
 
     def register_action_type(self, action: ActionTypeDef) -> None:
         self.action_types[action.api_name] = action
+
+    def register_function(self, function: FunctionDef) -> None:
+        self.function_defs[function.api_name] = function
 
     def object_types_for_domain(self, domain: ItemDomain) -> list[ObjectTypeDef]:
         return [ot for ot in self.object_types.values() if ot.domain == domain]
@@ -170,6 +191,15 @@ class OntologyRegistry:
         if at is None or not at.implementation:
             raise HomeAtlasError(f"no implementation for action: {api_name}")
         module_path, _, attr = at.implementation.rpartition(".")
+        import importlib
+        mod = importlib.import_module(module_path)
+        return getattr(mod, attr)
+
+    def resolve_function(self, api_name: str) -> Any:
+        fn = self.function_defs.get(api_name)
+        if fn is None or not fn.implementation:
+            raise HomeAtlasError(f"no implementation for function: {api_name}")
+        module_path, _, attr = fn.implementation.rpartition(".")
         import importlib
         mod = importlib.import_module(module_path)
         return getattr(mod, attr)
@@ -248,6 +278,7 @@ class OntologyRegistry:
             "object_types": [ot.to_dict() for ot in self.object_types.values()],
             "link_types": [lt.to_dict() for lt in self.link_types.values()],
             "action_types": [at.to_dict() for at in self.action_types.values()],
+            "function_defs": [fn.to_dict() for fn in self.function_defs.values()],
         }
 
     def describe_links_for_llm(self) -> str:
@@ -544,6 +575,47 @@ _ACTION_TYPES: list[ActionTypeDef] = [
     ),
 ]
 
+_FUNCTION_DEFS: list[FunctionDef] = [
+    FunctionDef(
+        api_name="search_items",
+        parameters=(
+            ActionParameterDef("query", str, False, "搜索关键词"),
+            ActionParameterDef("kind", ItemKind, False, "物品类型"),
+            ActionParameterDef("domain", ItemDomain, False, "领域"),
+            ActionParameterDef("location", str, False, "位置关键词"),
+            ActionParameterDef("expiring_within_days", int, False, "临期天数"),
+            ActionParameterDef("include_archived", bool, False, "是否包含归档"),
+            ActionParameterDef("property_filter", dict, False, "属性过滤"),
+        ),
+        implementation="home_atlas.actions.search_items",
+        description="搜索库存物品",
+    ),
+    FunctionDef(
+        api_name="where_is",
+        parameters=(ActionParameterDef("name", str, True, "物品名称"),),
+        implementation="home_atlas.actions.where_is",
+        description="查询物品位置",
+    ),
+    FunctionDef(
+        api_name="list_expiring",
+        parameters=(ActionParameterDef("within_days", int, False, "临期天数"),),
+        implementation="home_atlas.actions.list_expiring",
+        description="列出即将过期或续费的物品",
+    ),
+    FunctionDef(
+        api_name="recent_activity",
+        parameters=(ActionParameterDef("limit", int, False, "返回条数"),),
+        implementation="home_atlas.actions.recent_activity",
+        description="查看最近审计事件",
+    ),
+    FunctionDef(
+        api_name="last_touched",
+        parameters=(ActionParameterDef("name", str, True, "物品名称"),),
+        implementation="home_atlas.actions.last_touched",
+        description="查看物品最后一次操作",
+    ),
+]
+
 
 def build_registry() -> OntologyRegistry:
     registry = OntologyRegistry()
@@ -555,6 +627,8 @@ def build_registry() -> OntologyRegistry:
         registry.register_link_type(lt)
     for at in _ACTION_TYPES:
         registry.register_action_type(at)
+    for fn in _FUNCTION_DEFS:
+        registry.register_function(fn)
     registry.validate_links()
     return registry
 

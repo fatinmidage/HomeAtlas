@@ -8,7 +8,7 @@
 > | R2 | 统一 Action Dispatcher，让 Registry 元数据真正生效 | 🟠 高 | ☑ |
 > | R3 | 审计与副作用正确性（post-commit 派发 / version 并发） | 🟠 中 | ☑ |
 > | R4 | 本体一致性（命名空间统一 / 单一事实源 / 双向 Link） | 🟡 中 | ☑ |
-> | R5 | AI 与读函数全面成为 Registry 投影 | 🟡 中 | ☐ |
+> | R5 | AI 与读函数全面成为 Registry 投影 | 🟡 中 | ☑ |
 > | R6 | 清尾与文档对齐 | ⚪ 低 | ☐ |
 
 ## Context
@@ -230,6 +230,8 @@ commit `refactor(R4): unify ontology namespace, single property source, bidirect
 
 **完成标准**：`uv run pytest` 全绿 →
 commit `refactor(R5): generate AI toolsets and read functions from registry`。
+
+实际结果：`uv run pytest` 全绿；读函数已注册为 FunctionDef 并通过 REST 投影；AI domain toolset 统一由 `_build_ai_toolset_for_domain(domain)` 入口构建且工具名集合保持兼容。
 
 ---
 

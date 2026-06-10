@@ -128,3 +128,10 @@ def test_action_type_to_dict_excludes_implementation(registry: OntologyRegistry)
         assert "implementation" not in d
         assert "api_name" in d
         assert "parameters" in d
+
+
+def test_registered_functions_resolve(registry: OntologyRegistry) -> None:
+    expected = {"search_items", "where_is", "list_expiring", "recent_activity", "last_touched"}
+    assert set(registry.function_defs) == expected
+    for api_name in expected:
+        assert callable(registry.resolve_function(api_name))

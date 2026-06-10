@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from pydantic import BaseModel
 from home_atlas import actions
 from home_atlas.config import Settings, get_settings
 from home_atlas.db import create_db_engine, create_tables, seed_people_from_tokens, session_scope
-from home_atlas.dispatcher import dispatch_action
+from home_atlas.dispatcher import dispatch_action, dispatch_function
 from home_atlas.ontology import ObjectTypeDef, get_registry
 from home_atlas.security import HomeAtlasError, UnauthorizedError, resolve_actor_id
 
@@ -79,6 +79,15 @@ def build_rest_app(settings: Settings | None = None) -> FastAPI:
             _make_action_handler(at.api_name),
             methods=["POST"],
         )
+
+    @app.get("/api/functions/{function_name}")
+    def invoke_function(function_name: str, request: Request) -> Any:
+        with session_scope(engine) as session:
+            try:
+                return dispatch_function(session, function_name, dict(request.query_params))
+            except HomeAtlasError as exc:
+                status_code = 404 if str(exc).startswith("unknown function") else 400
+                raise HTTPException(status_code=status_code, detail=str(exc))
 
     @app.get("/api/ontology")
     def get_ontology() -> dict[str, Any]:
