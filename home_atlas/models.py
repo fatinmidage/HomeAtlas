@@ -39,6 +39,7 @@ class EventAction(StrEnum):
     UPDATE_ITEM = "UpdateItem"
     UPSERT_CARD_REFERENCE = "UpsertCardReference"
     DISCARD_ITEM = "DiscardItem"
+    SET_PERSON_ROLE = "SetPersonRole"
 
 
 def domain_for_kind(kind: ItemKind) -> ItemDomain:
@@ -60,8 +61,8 @@ class Person(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(index=True, unique=True)
     roles: list[str] = Field(
-        default_factory=lambda: ["admin"],
-        sa_column=Column(JSON, nullable=False, server_default='["admin"]'),
+        default_factory=lambda: ["member"],
+        sa_column=Column(JSON, nullable=False, server_default='["member"]'),
     )
     created_at: datetime = Field(default_factory=utc_now)
 
@@ -107,4 +108,3 @@ class Event(SQLModel, table=True):
     after: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
     version: int | None = Field(default=None)
     created_at: datetime = Field(default_factory=utc_now, index=True)
-

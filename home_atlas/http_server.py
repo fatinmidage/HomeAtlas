@@ -53,7 +53,7 @@ def main() -> None:
     engine = create_db_engine(settings)
     create_tables(engine)
     with session_scope(engine) as session:
-        seed_people_from_tokens(session, settings.token_map)
+        seed_people_from_tokens(session, settings.token_map, settings.admins)
     HomeAtlasHandler.engine = engine
     HomeAtlasHandler.settings = settings
     server = ThreadingHTTPServer((settings.host, settings.port), HomeAtlasHandler)

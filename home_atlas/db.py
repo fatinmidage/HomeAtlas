@@ -26,9 +26,17 @@ def session_scope(engine: Engine) -> Iterator[Session]:
         yield session
 
 
-def seed_people_from_tokens(session: Session, token_map: dict[str, str]) -> None:
+def seed_people_from_tokens(session: Session, token_map: dict[str, str], admin_names: str | list[str] | tuple[str, ...] = ()) -> None:
+    if isinstance(admin_names, str):
+        admins = {name.strip() for name in admin_names.split(",") if name.strip()}
+    else:
+        admins = {name for name in admin_names if name}
     for person_name in set(token_map.values()):
         person = session.exec(select(Person).where(Person.name == person_name)).first()
         if person is None:
-            session.add(Person(name=person_name))
+            roles = ["admin"] if person_name in admins else ["member"]
+            session.add(Person(name=person_name, roles=roles))
+        elif person_name in admins and "admin" not in (person.roles or []):
+            person.roles = sorted(set(person.roles or []) | {"admin"})
+            session.add(person)
     session.commit()

@@ -19,7 +19,7 @@ from home_atlas.models import (
 )
 from home_atlas.event_bus import get_event_bus
 from home_atlas.property_schemas import validate_item_properties
-from home_atlas.security import HomeAtlasError, check_action_permission, reject_payment_card_secrets
+from home_atlas.security import HomeAtlasError, check_action_permission, reject_payment_card_secrets, scan_sensitive_text
 
 
 def _snapshot(item: Item | None) -> dict[str, Any] | None:
@@ -122,6 +122,9 @@ def add_item(
 ) -> Item:
     check_action_permission(session, actor_id, "AddItem")
     properties = properties or {}
+    scan_sensitive_text(name, "name")
+    scan_sensitive_text(notes, "notes")
+    scan_sensitive_text(properties, "properties")
     if kind == ItemKind.PAYMENT_CARD:
         reject_payment_card_secrets(properties)
     properties = validate_item_properties(kind, properties)
@@ -230,6 +233,9 @@ def set_quantity(session: Session, *, actor_id: int, item_id: int, quantity: flo
 def update_item(session: Session, *, actor_id: int, item_id: int, confirm: bool = False, **changes: Any) -> Item:
     check_action_permission(session, actor_id, "UpdateItem")
     item = _item(session, item_id)
+    for field_name in ("name", "notes", "properties"):
+        if field_name in changes:
+            scan_sensitive_text(changes[field_name], field_name)
     if changes.get("properties") and item.kind == ItemKind.PAYMENT_CARD:
         reject_payment_card_secrets(changes["properties"])
     if changes.get("properties"):
@@ -269,6 +275,8 @@ def upsert_card_reference(
     properties: dict[str, Any],
 ) -> Item:
     check_action_permission(session, actor_id, "UpsertCardReference")
+    scan_sensitive_text(name, "name")
+    scan_sensitive_text(properties, "properties")
     if card_type == ItemKind.PAYMENT_CARD:
         reject_payment_card_secrets(properties)
     properties = validate_item_properties(card_type, properties)
@@ -329,6 +337,35 @@ def discard_item(session: Session, *, actor_id: int, item_id: int, confirm: bool
     session.commit()
     session.refresh(item)
     return item
+
+
+def set_person_role(session: Session, *, actor_id: int, person_name: str, role: str) -> Person:
+    check_action_permission(session, actor_id, "SetPersonRole")
+    if role not in {"viewer", "member", "admin"}:
+        raise HomeAtlasError("role must be viewer, member, or admin")
+    person = session.exec(select(Person).where(Person.name == person_name)).first()
+    if person is None:
+        person = Person(name=person_name)
+        session.add(person)
+        session.flush()
+    before = {"id": person.id, "name": person.name, "roles": list(person.roles or [])}
+    person.roles = [role]
+    session.add(person)
+    session.flush()
+    session.add(
+        Event(
+            item_id=None,
+            actor_id=actor_id,
+            action=EventAction.SET_PERSON_ROLE,
+            summary=f"Set {person.name} role to {role}",
+            before=before,
+            after={"id": person.id, "name": person.name, "roles": list(person.roles or [])},
+            version=None,
+        )
+    )
+    session.commit()
+    session.refresh(person)
+    return person
 
 
 def search_items(

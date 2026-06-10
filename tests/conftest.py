@@ -17,7 +17,7 @@ def session() -> Session:
     )
     SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
-        session.add(Person(name="你"))
+        session.add(Person(name="你", roles=["admin"]))
         session.add(Person(name="配偶"))
         session.commit()
         yield session

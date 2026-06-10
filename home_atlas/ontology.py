@@ -467,6 +467,18 @@ _ACTION_TYPES: list[ActionTypeDef] = [
         implementation="home_atlas.actions.discard_item",
         required_role="admin",
     ),
+    ActionTypeDef(
+        api_name="SetPersonRole",
+        event_action=EventAction.SET_PERSON_ROLE,
+        applicable_to=frozenset(),
+        parameters=(
+            ActionParameterDef("person_name", str, True, "成员姓名"),
+            ActionParameterDef("role", str, True, "viewer/member/admin"),
+        ),
+        description="设置家庭成员角色",
+        implementation="home_atlas.actions.set_person_role",
+        required_role="admin",
+    ),
 ]
 
 

@@ -112,6 +112,32 @@ def test_payment_card_stores_reference_only(session: Session, actor_id: int) -> 
     assert item.properties["last4"] == "4242"
 
 
+def test_sensitive_text_rejected_for_any_kind(session: Session, actor_id: int) -> None:
+    with pytest.raises(HomeAtlasError):
+        add_item(
+            session,
+            actor_id=actor_id,
+            name="普通物品",
+            kind=ItemKind.OTHER,
+            location_name="抽屉",
+            notes="完整卡号 4242424242424242",
+        )
+
+    with pytest.raises(HomeAtlasError):
+        add_item(
+            session,
+            actor_id=actor_id,
+            name="普通物品",
+            kind=ItemKind.OTHER,
+            location_name="抽屉",
+            properties={"card_number": "4242"},
+        )
+
+    item = add_item(session, actor_id=actor_id, name="普通物品", kind=ItemKind.OTHER, location_name="抽屉")
+    with pytest.raises(HomeAtlasError):
+        update_item(session, actor_id=actor_id, item_id=item.id, confirm=True, notes="4242424242424242")
+
+
 def test_list_expiring_uses_expiry_and_renewal(session: Session, actor_id: int) -> None:
     add_item(
         session,
@@ -182,4 +208,3 @@ def test_search_items_filters_by_property(session: Session, actor_id: int) -> No
 
     results_all = search_items(session)
     assert len(results_all) >= 2
-

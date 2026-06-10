@@ -4,7 +4,7 @@
 >
 > | Phase | 主题 | 优先级 | 状态 |
 > |-------|------|--------|------|
-> | R1 | 安全堵漏（REST 认证 / RBAC / 敏感数据护栏） | 🔴 高危 | ☐ |
+> | R1 | 安全堵漏（REST 认证 / RBAC / 敏感数据护栏） | 🔴 高危 | ☑ |
 > | R2 | 统一 Action Dispatcher，让 Registry 元数据真正生效 | 🟠 高 | ☐ |
 > | R3 | 审计与副作用正确性（post-commit 派发 / version 并发） | 🟠 中 | ☐ |
 > | R4 | 本体一致性（命名空间统一 / 单一事实源 / 双向 Link） | 🟡 中 | ☐ |
@@ -86,6 +86,8 @@ Action 唯一写入口、审计 Event、MCP 端服务端身份解析），但存
 
 **完成标准**：`uv run pytest` 全绿 → `alembic upgrade head` 可执行 →
 commit `refactor(R1): close REST auth, RBAC, and sensitive-data gaps`。
+
+实际结果：`uv run pytest` 全绿；`alembic upgrade head` 已用临时 SQLite 数据库验证通过。
 
 ---
 

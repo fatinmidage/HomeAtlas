@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import pytest
-from sqlmodel import Session
+from sqlmodel import Session, select
 
-from home_atlas.actions import add_item, discard_item
-from home_atlas.models import ItemKind, Person
+from home_atlas.actions import add_item, discard_item, set_person_role, update_item
+from home_atlas.models import Event, EventAction, ItemKind, Person
 from home_atlas.ontology import build_registry
 from home_atlas.security import UnauthorizedError
 
@@ -40,6 +40,9 @@ def test_member_can_add_but_not_discard(session: Session) -> None:
     with pytest.raises(UnauthorizedError, match="lacks permission"):
         discard_item(session, actor_id=member_id, item_id=item.id, confirm=True)
 
+    with pytest.raises(UnauthorizedError, match="lacks permission"):
+        update_item(session, actor_id=member_id, item_id=item.id, confirm=True, name="新名字")
+
 
 def test_admin_can_do_everything(session: Session, actor_id: int) -> None:
     item = add_item(
@@ -48,6 +51,24 @@ def test_admin_can_do_everything(session: Session, actor_id: int) -> None:
     )
     discarded = discard_item(session, actor_id=actor_id, item_id=item.id, confirm=True)
     assert discarded.archived is True
+
+
+def test_person_defaults_to_member_role() -> None:
+    assert Person(name="默认成员").roles == ["member"]
+
+
+def test_set_person_role_requires_admin_and_writes_audit(session: Session, actor_id: int) -> None:
+    member_id = _create_person(session, "普通成员", ["member"])
+
+    with pytest.raises(UnauthorizedError, match="lacks permission"):
+        set_person_role(session, actor_id=member_id, person_name="普通成员", role="admin")
+
+    person = set_person_role(session, actor_id=actor_id, person_name="普通成员", role="admin")
+    assert person.roles == ["admin"]
+
+    event = session.exec(select(Event).where(Event.action == EventAction.SET_PERSON_ROLE)).one()
+    assert event.actor_id == actor_id
+    assert event.after["roles"] == ["admin"]
 
 
 def test_check_permission_role_hierarchy() -> None:

@@ -10,6 +10,7 @@ from home_atlas.models import Person
 FULL_CARD_RE = re.compile(r"\b\d{13,19}\b")
 PAYMENT_CARD_ALLOWED_KEYS = {"issuer", "card_type", "last4", "expiry_my", "physical_location"}
 CVV_KEYS = {"cvv", "cvc", "security_code", "card_security_code"}
+CARD_NUMBER_KEYS = {"card_number", "card_no", "pan"}
 
 
 class HomeAtlasError(ValueError):
@@ -45,6 +46,25 @@ def check_action_permission(session: Session, actor_id: int, action_name: str) -
         raise UnauthorizedError(f"role {roles} lacks permission for {action_name}")
 
 
+def scan_sensitive_text(value: Any, path: str = "value") -> None:
+    """Reject full payment secrets anywhere user-controlled text can be stored."""
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            lowered = str(key).lower()
+            if lowered in CVV_KEYS:
+                raise HomeAtlasError(f"sensitive CVV field {key!r} must never be stored")
+            if lowered in CARD_NUMBER_KEYS:
+                raise HomeAtlasError(f"sensitive card-number field {key!r} must never be stored")
+            scan_sensitive_text(nested, f"{path}.{key}")
+        return
+    if isinstance(value, (list, tuple, set)):
+        for index, nested in enumerate(value):
+            scan_sensitive_text(nested, f"{path}[{index}]")
+        return
+    if isinstance(value, str) and FULL_CARD_RE.search(value):
+        raise HomeAtlasError(f"{path} looks like a full card number")
+
+
 def reject_payment_card_secrets(properties: dict[str, Any]) -> None:
     extra_keys = set(properties) - PAYMENT_CARD_ALLOWED_KEYS
     if extra_keys:
@@ -58,4 +78,3 @@ def reject_payment_card_secrets(properties: dict[str, Any]) -> None:
     last4 = properties.get("last4")
     if last4 is not None and not re.fullmatch(r"\d{4}", str(last4)):
         raise HomeAtlasError("payment card last4 must be exactly four digits")
-

@@ -49,7 +49,7 @@ def build_fastmcp(settings: Settings | None = None):
     grant_select_on_new_tables(settings)
     verify_readonly_isolation(settings)
     with session_scope(engine) as session:
-        seed_people_from_tokens(session, settings.token_map)
+        seed_people_from_tokens(session, settings.token_map, settings.admins)
         check_schema_version(session)
 
     auth_settings = None

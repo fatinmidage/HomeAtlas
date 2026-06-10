@@ -103,7 +103,7 @@ def init_db(settings: Settings, *, create_database: bool = False) -> int:
     _run_alembic_upgrade(settings)
     engine = create_db_engine(settings)
     with session_scope(engine) as session:
-        seed_people_from_tokens(session, settings.token_map)
+        seed_people_from_tokens(session, settings.token_map, settings.admins)
     print("database initialized")
     return 0
 
