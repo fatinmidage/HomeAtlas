@@ -6,9 +6,9 @@ import pytest
 from sqlmodel import Session
 
 from home_atlas.actions import add_item
-from home_atlas.dispatcher import dispatch_action
+from home_atlas.dispatcher import dispatch_action, dispatch_function
 from home_atlas.models import ItemKind, Person
-from home_atlas.ontology import build_registry
+from home_atlas.ontology import ActionParameterDef, FunctionDef, build_registry, get_registry
 from home_atlas.security import HomeAtlasError, UnauthorizedError
 
 
@@ -70,6 +70,35 @@ def test_dispatcher_enforces_rbac(session: Session) -> None:
 
     with pytest.raises(UnauthorizedError, match="lacks permission"):
         dispatch_action(session, member.id, "DiscardItem", {"item_id": item.id}, confirm=True)
+
+
+def test_dispatcher_enforces_function_required_role(session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    admin = Person(name="管理员", roles=["admin"])
+    member = Person(name="成员", roles=["member"])
+    session.add(admin)
+    session.add(member)
+    session.commit()
+    session.refresh(admin)
+    session.refresh(member)
+
+    registry = get_registry()
+    patched_functions = dict(registry.function_defs)
+    patched_functions["admin_ping"] = FunctionDef(
+        api_name="admin_ping",
+        parameters=(ActionParameterDef("message", str),),
+        implementation="tests.test_dispatcher._admin_ping",
+        required_role="admin",
+    )
+    monkeypatch.setattr(registry, "function_defs", patched_functions)
+
+    with pytest.raises(UnauthorizedError, match="lacks permission"):
+        dispatch_function(session, member.id, "admin_ping", {"message": "hello"})
+
+    assert dispatch_function(session, admin.id, "admin_ping", {"message": "hello"}) == {"message": "hello"}
+
+
+def _admin_ping(session: Session, message: str) -> dict[str, str]:
+    return {"message": message}
 
 
 def test_registry_action_implementations_resolve_and_match_parameters() -> None:

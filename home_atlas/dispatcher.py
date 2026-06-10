@@ -7,7 +7,7 @@ from typing import Any, get_args, get_origin
 from sqlmodel import Session
 
 from home_atlas.ontology import ActionParameterDef, get_registry
-from home_atlas.security import HomeAtlasError, check_action_permission
+from home_atlas.security import HomeAtlasError, check_action_permission, check_function_permission
 
 
 def dispatch_action(
@@ -31,12 +31,13 @@ def dispatch_action(
     return impl(session, actor_id=actor_id, **validated)
 
 
-def dispatch_function(session: Session, api_name: str, params: dict[str, Any]) -> Any:
+def dispatch_function(session: Session, actor_id: int, api_name: str, params: dict[str, Any]) -> Any:
     registry = get_registry()
     function = registry.function_defs.get(api_name)
     if function is None:
         raise HomeAtlasError(f"unknown function: {api_name}")
     validated = _validate_params(function.parameters, params)
+    check_function_permission(session, actor_id, api_name)
     impl = registry.resolve_function(api_name)
     return impl(session, **validated)
 

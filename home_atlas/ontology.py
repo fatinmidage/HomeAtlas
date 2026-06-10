@@ -217,6 +217,17 @@ class OntologyRegistry:
         )
         return person_level >= required_level
 
+    def check_function_permission(self, function_api_name: str, person_roles: list[str]) -> bool:
+        fn = self.function_defs.get(function_api_name)
+        if fn is None:
+            return False
+        required_level = self._ROLE_HIERARCHY.get(fn.required_role, 0)
+        person_level = max(
+            (self._ROLE_HIERARCHY.get(r, 0) for r in person_roles),
+            default=0,
+        )
+        return person_level >= required_level
+
     def shortest_path(self, source_type: str, target_type: str) -> list[str]:
         from collections import deque
         if source_type == target_type:

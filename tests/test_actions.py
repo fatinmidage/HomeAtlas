@@ -174,6 +174,28 @@ def test_recent_and_last_touched_report_actor(session: Session, actor_id: int) -
     assert last_touched(session, "会员卡")["actor"] == "你"
 
 
+def test_recent_activity_masks_secret_snapshot_properties(session: Session, actor_id: int) -> None:
+    item = add_item(
+        session,
+        actor_id=actor_id,
+        name="证件",
+        kind=ItemKind.DOCUMENT,
+        location_name="保险柜",
+        properties={"document_number": "E12345678"},
+    )
+    update_item(
+        session,
+        actor_id=actor_id,
+        item_id=item.id,
+        confirm=True,
+        properties={"document_number": "E87654321"},
+    )
+
+    events = recent_activity(session, limit=2)
+    assert events[0]["before"]["properties"]["document_number"] == "****5678"
+    assert events[0]["after"]["properties"]["document_number"] == "****4321"
+
+
 def test_event_version_increments_per_item(session: Session, actor_id: int) -> None:
     from home_atlas.models import Event
 

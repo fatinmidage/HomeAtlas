@@ -30,7 +30,7 @@ def build_rest_app(settings: Settings | None = None) -> FastAPI:
     registry = get_registry()
 
     def _make_list_handler(ot: ObjectTypeDef):
-        def handler(query: str | None = Query(None)) -> list[dict[str, Any]]:
+        def handler(query: str | None = Query(None), actor_id: int = Depends(_actor_id)) -> list[dict[str, Any]]:
             with session_scope(engine) as session:
                 return actions.search_items(
                     session,
@@ -81,16 +81,18 @@ def build_rest_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/api/functions/{function_name}")
-    def invoke_function(function_name: str, request: Request) -> Any:
+    def invoke_function(function_name: str, request: Request, actor_id: int = Depends(_actor_id)) -> Any:
         with session_scope(engine) as session:
             try:
-                return dispatch_function(session, function_name, dict(request.query_params))
+                return dispatch_function(session, actor_id, function_name, dict(request.query_params))
             except HomeAtlasError as exc:
                 status_code = 404 if str(exc).startswith("unknown function") else 400
                 raise HTTPException(status_code=status_code, detail=str(exc))
+            except UnauthorizedError as exc:
+                raise HTTPException(status_code=403, detail=str(exc))
 
     @app.get("/api/ontology")
-    def get_ontology() -> dict[str, Any]:
+    def get_ontology(actor_id: int = Depends(_actor_id)) -> dict[str, Any]:
         return registry.to_dict()
 
     return app

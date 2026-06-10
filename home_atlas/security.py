@@ -46,6 +46,17 @@ def check_action_permission(session: Session, actor_id: int, action_name: str) -
         raise UnauthorizedError(f"role {roles} lacks permission for {action_name}")
 
 
+def check_function_permission(session: Session, actor_id: int, function_name: str) -> None:
+    from home_atlas.ontology import get_registry
+    person = session.get(Person, actor_id)
+    if person is None:
+        raise UnauthorizedError("unknown actor")
+    roles = person.roles if person.roles else ["viewer"]
+    registry = get_registry()
+    if not registry.check_function_permission(function_name, roles):
+        raise UnauthorizedError(f"role {roles} lacks permission for {function_name}")
+
+
 def scan_sensitive_text(value: Any, path: str = "value") -> None:
     """Reject full payment secrets anywhere user-controlled text can be stored."""
     if isinstance(value, dict):

@@ -456,8 +456,8 @@ def recent_activity(session: Session, limit: int = 10) -> list[dict[str, Any]]:
             "actor": person.name,
             "action": event.action.value,
             "summary": event.summary,
-            "before": event.before,
-            "after": event.after,
+            "before": _masked_snapshot(event.before),
+            "after": _masked_snapshot(event.after),
             "version": event.version,
             "created_at": event.created_at.isoformat(),
         }
@@ -515,6 +515,30 @@ def _masked_properties(item: Item) -> dict[str, Any]:
         key: _mask_secret(value) if key in secret_names else value
         for key, value in (item.properties or {}).items()
     }
+
+
+def _masked_snapshot(snapshot: dict[str, Any] | None) -> dict[str, Any] | None:
+    if snapshot is None:
+        return None
+    masked = dict(snapshot)
+    kind_value = masked.get("kind")
+    properties = masked.get("properties")
+    if not kind_value or not isinstance(properties, dict):
+        return masked
+    try:
+        kind = ItemKind(kind_value)
+    except ValueError:
+        return masked
+    registry = get_registry()
+    ot = registry.object_type_for_kind(kind)
+    if ot is None:
+        return masked
+    secret_names = {prop.name for prop in ot.typed_properties if prop.secret}
+    masked["properties"] = {
+        key: _mask_secret(value) if key in secret_names else value
+        for key, value in properties.items()
+    }
+    return masked
 
 
 def _mask_secret(value: Any) -> Any:
