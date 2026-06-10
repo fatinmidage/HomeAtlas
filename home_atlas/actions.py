@@ -17,7 +17,7 @@ from home_atlas.models import (
     domain_for_kind,
     utc_now,
 )
-from home_atlas.event_bus import get_event_bus
+from home_atlas.event_bus import enqueue_event
 from home_atlas.ontology import get_registry
 from home_atlas.property_schemas import validate_item_properties
 from home_atlas.security import HomeAtlasError, check_action_permission, reject_payment_card_secrets, scan_sensitive_text
@@ -47,6 +47,9 @@ def _next_version(session: Session, item_id: int | None) -> int | None:
     if item_id is None:
         return None
     from sqlalchemy import func
+    dialect = session.bind.dialect.name if session.bind else ""
+    if dialect == "postgresql":
+        session.exec(select(Item.id).where(Item.id == item_id).with_for_update()).first()
     result = session.exec(
         select(func.coalesce(func.max(Event.version), 0)).where(Event.item_id == item_id)
     ).one()
@@ -75,7 +78,7 @@ def _event(
             version=_next_version(session, item_id),
         )
     )
-    get_event_bus().dispatch(action, item_id, after_snapshot)
+    enqueue_event(session, action, item_id, after_snapshot)
 
 
 def _location(session: Session, name: str) -> Location:

@@ -6,6 +6,9 @@ import logging
 from collections import defaultdict
 from typing import Any, Callable
 
+from sqlalchemy import event
+from sqlalchemy.orm import Session as SASession
+
 from home_atlas.models import EventAction
 
 logger = logging.getLogger(__name__)
@@ -37,7 +40,25 @@ class EventBus:
 
 
 _bus = EventBus()
+_PENDING_EVENTS_KEY = "home_atlas_pending_events"
 
 
 def get_event_bus() -> EventBus:
     return _bus
+
+
+def enqueue_event(session: SASession, action: EventAction, item_id: int | None, after: dict[str, Any] | None) -> None:
+    pending = session.info.setdefault(_PENDING_EVENTS_KEY, [])
+    pending.append((action, item_id, after))
+
+
+@event.listens_for(SASession, "after_commit")
+def _dispatch_pending_events(session: SASession) -> None:
+    pending = session.info.pop(_PENDING_EVENTS_KEY, [])
+    for action, item_id, after in pending:
+        get_event_bus().dispatch(action, item_id, after)
+
+
+@event.listens_for(SASession, "after_rollback")
+def _clear_pending_events(session: SASession) -> None:
+    session.info.pop(_PENDING_EVENTS_KEY, None)

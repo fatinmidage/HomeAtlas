@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 from sqlmodel import select
 
-from home_atlas.actions import add_item
+from home_atlas.actions import add_item, move_item
 from home_atlas.config import Settings
 from home_atlas.db import create_db_engine, create_tables, seed_people_from_tokens, session_scope
 from home_atlas.models import Event, Item, ItemKind
@@ -56,3 +56,48 @@ def test_postgres_concurrent_writes_to_same_new_location() -> None:
     assert {item.name for item in stored_items} == set(item_names)
     assert {item.location_id for item in stored_items}
     assert event_count == len(item_names)
+
+
+@pytest.mark.skipif(
+    not os.getenv("HOME_ATLAS_INTEGRATION_DATABASE_URL"),
+    reason="set HOME_ATLAS_INTEGRATION_DATABASE_URL to run PostgreSQL integration tests",
+)
+def test_postgres_concurrent_writes_to_same_item_have_unique_versions() -> None:
+    settings = Settings(
+        _env_file=None,
+        database_url=os.environ["HOME_ATLAS_INTEGRATION_DATABASE_URL"],
+        token_map={"you-token": "你"},
+    )
+    engine = create_db_engine(settings)
+    create_tables(engine)
+    suffix = uuid4().hex[:8]
+
+    with session_scope(engine) as session:
+        seed_people_from_tokens(session, settings.token_map)
+        actor_id = resolve_actor_id(session, "you-token", settings.token_map)
+        item = add_item(
+            session,
+            actor_id=actor_id,
+            name=f"同物品并发-{suffix}",
+            kind=ItemKind.TOOL,
+            location_name=f"初始位置-{suffix}",
+        )
+        assert item.id is not None
+        item_id = item.id
+
+    locations = [f"并发位置-{suffix}-{index}" for index in range(8)]
+
+    def move(location_name: str) -> None:
+        with session_scope(engine) as session:
+            actor_id = resolve_actor_id(session, "you-token", settings.token_map)
+            move_item(session, actor_id=actor_id, item_id=item_id, location_name=location_name)
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        list(executor.map(move, locations))
+
+    with session_scope(engine) as session:
+        versions = session.exec(
+            select(Event.version).where(Event.item_id == item_id).order_by(Event.version)
+        ).all()
+
+    assert versions == list(range(1, len(locations) + 2))
