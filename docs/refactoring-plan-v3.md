@@ -6,7 +6,7 @@
 > |-------|------|--------|------|
 > | R7 | 堵读路径泄漏链（读端点认证 / Function 权限 / 审计打码） | 🔴 高危 | ☑ |
 > | R8 | R5 真正收尾：AI 工具由 ActionTypeDef 生成 | 🟠 中 | ☑ |
-> | R9 | 护栏硬化与文档对齐 | 🟡 低 | ☐ |
+> | R9 | 护栏硬化与文档对齐 | 🟡 低 | ☑ |
 
 ## Context
 
@@ -180,6 +180,15 @@ commit `refactor(R8): derive AI toolsets from ActionTypeDef declarations`。
 
 **完成标准**：`uv run pytest` 全绿 →
 commit `refactor(R9): harden sensitive-data guards and align docs`。
+
+**实际结果（2026-06-10）**：
+
+- 卡号扫描升级为分隔符感知候选匹配：空格/连字符分隔的 13–19 位完整卡号会被归一化识别并拒绝；带字母业务前缀的快递单号示例保持允许。
+- `location_name` 已纳入 `add_item` / `move_item` / `upsert_card_reference` 敏感扫描。
+- `auto_traverse(source_type == target_type)` 已改为查询并返回源对象完整行数据。
+- `actions.py` 模块 docstring 已写明 action 内权限/confirm 双检是纵深防御。
+- README 与 Hermes skill 已同步：REST 读示例带 Authorization header，敏感信息说明覆盖位置字段和分隔符卡号。
+- 验证：`uv run pytest` 通过（108 passed, 4 skipped）。
 
 ---
 

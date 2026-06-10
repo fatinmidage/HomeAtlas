@@ -9,7 +9,7 @@ It exposes one high-level delegated tool, `home_atlas(request)`, while keeping w
 - SQLModel object model: `Person`, `Location`, `Item`, `Event`
 - Ontology Actions: add, move, adjust quantity, set quantity, update, upsert card reference, discard, set person role
 - Registry-projected Read Functions: search, where-is, expiring list, recent activity, last touched
-- Sensitive-data validation across names, notes, and properties: no full 13-19 digit card numbers, no CVV/card-number keys; payment-card properties allow only reference fields
+- Sensitive-data validation across names, locations, notes, and properties: no full 13-19 digit card numbers, including space- or hyphen-separated forms; no CVV/card-number keys; payment-card properties allow only reference fields
 - Token-to-person identity resolution; REST and MCP resolve actors server-side
 - RBAC defaults new people to `member`; admin-only actions include update, discard, and role changes
 - Domain toolsets with prefixes: `perishable_*`, `card_*`, `equipment_*`
@@ -122,6 +122,19 @@ uv run python -m home_atlas.cli dual-smoke \
   --reader-token spouse-token \
   --item 双端烟测护照 \
   --location 双端烟测保险柜
+```
+
+## REST API
+
+The generated REST API also resolves actors from Bearer tokens. Read and write
+endpoints all require `Authorization`; unauthenticated reads return 401.
+
+```bash
+curl http://localhost:8080/api/objects/Food \
+  -H 'Authorization: Bearer you-token'
+
+curl http://localhost:8080/api/ontology \
+  -H 'Authorization: Bearer you-token'
 ```
 
 ## Agent Mode

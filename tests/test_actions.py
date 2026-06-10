@@ -138,6 +138,58 @@ def test_sensitive_text_rejected_for_any_kind(session: Session, actor_id: int) -
         update_item(session, actor_id=actor_id, item_id=item.id, confirm=True, notes="4242424242424242")
 
 
+def test_sensitive_text_rejects_separated_card_numbers(session: Session, actor_id: int) -> None:
+    for secret in ("4111 1111 1111 1111", "4111-1111-1111-1111"):
+        with pytest.raises(HomeAtlasError):
+            add_item(
+                session,
+                actor_id=actor_id,
+                name="普通物品",
+                kind=ItemKind.OTHER,
+                location_name="抽屉",
+                notes=f"完整卡号 {secret}",
+            )
+
+
+def test_sensitive_text_allows_common_tracking_number_context(session: Session, actor_id: int) -> None:
+    item = add_item(
+        session,
+        actor_id=actor_id,
+        name="普通物品",
+        kind=ItemKind.OTHER,
+        location_name="抽屉",
+        notes="2026年6月 顺丰 SF1234567890123",
+    )
+
+    assert item.name == "普通物品"
+
+
+def test_location_name_rejects_full_card_numbers(session: Session, actor_id: int) -> None:
+    with pytest.raises(HomeAtlasError):
+        add_item(
+            session,
+            actor_id=actor_id,
+            name="普通物品",
+            kind=ItemKind.OTHER,
+            location_name="抽屉 4111 1111 1111 1111",
+        )
+
+    item = add_item(session, actor_id=actor_id, name="钥匙", kind=ItemKind.OTHER, location_name="玄关")
+
+    with pytest.raises(HomeAtlasError):
+        move_item(session, actor_id=actor_id, item_id=item.id, location_name="柜子 4111-1111-1111-1111")
+
+    with pytest.raises(HomeAtlasError):
+        upsert_card_reference(
+            session,
+            actor_id=actor_id,
+            name="招商信用卡",
+            location_name="钱包 4111 1111 1111 1111",
+            card_type=ItemKind.PAYMENT_CARD,
+            properties={"issuer": "招商", "card_type": "Visa", "last4": "4242", "physical_location": "钱包"},
+        )
+
+
 def test_list_expiring_uses_expiry_and_renewal(session: Session, actor_id: int) -> None:
     add_item(
         session,

@@ -86,7 +86,11 @@ def auto_traverse(
     registry = get_registry()
     path = registry.shortest_path(source_type, target_type)
     if not path:
-        return [{"id": source_id}]
+        table = _table_for_type(source_type)
+        if table is None:
+            raise HomeAtlasError(f"unmapped source type: {source_type}")
+        rows = session.execute(text(f"SELECT * FROM {table} WHERE id = :sid"), {"sid": source_id}).mappings().all()
+        return [dict(row) for row in rows]
     return traverse_chain(session, source_type, source_id, path)
 
 

@@ -7,7 +7,7 @@ from sqlmodel import Session, select
 
 from home_atlas.models import Person
 
-FULL_CARD_RE = re.compile(r"\b\d{13,19}\b")
+SEPARATED_CARD_CANDIDATE_RE = re.compile(r"(?<![A-Za-z0-9])(?:\d[ -]?){13,19}(?![A-Za-z0-9])")
 PAYMENT_CARD_ALLOWED_KEYS = {"issuer", "card_type", "last4", "expiry_my", "physical_location"}
 CVV_KEYS = {"cvv", "cvc", "security_code", "card_security_code"}
 CARD_NUMBER_KEYS = {"card_number", "card_no", "pan"}
@@ -72,7 +72,7 @@ def scan_sensitive_text(value: Any, path: str = "value") -> None:
         for index, nested in enumerate(value):
             scan_sensitive_text(nested, f"{path}[{index}]")
         return
-    if isinstance(value, str) and FULL_CARD_RE.search(value):
+    if isinstance(value, str) and _contains_full_card_number(value):
         raise HomeAtlasError(f"{path} looks like a full card number")
 
 
@@ -84,8 +84,16 @@ def reject_payment_card_secrets(properties: dict[str, Any]) -> None:
         raise HomeAtlasError("payment card CVV must never be stored")
     for key, value in properties.items():
         text = str(value)
-        if FULL_CARD_RE.search(text):
+        if _contains_full_card_number(text):
             raise HomeAtlasError(f"payment card field {key!r} looks like a full card number")
     last4 = properties.get("last4")
     if last4 is not None and not re.fullmatch(r"\d{4}", str(last4)):
         raise HomeAtlasError("payment card last4 must be exactly four digits")
+
+
+def _contains_full_card_number(text: str) -> bool:
+    for match in SEPARATED_CARD_CANDIDATE_RE.finditer(text):
+        normalized = re.sub(r"[ -]", "", match.group(0))
+        if 13 <= len(normalized) <= 19:
+            return True
+    return False

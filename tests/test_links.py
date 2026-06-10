@@ -108,3 +108,15 @@ def test_auto_traverse_location_to_items_uses_inverse_link(session: Session, act
     results = auto_traverse(session, "Location", location_id, "Item")
 
     assert [result["name"] for result in results] == ["钥匙"]
+
+
+def test_auto_traverse_same_type_returns_full_source_row(session: Session, actor_id: int) -> None:
+    item = actions.add_item(
+        session, actor_id=actor_id, name="手电筒", kind=ItemKind.TOOL, location_name="工具箱"
+    )
+
+    results = auto_traverse(session, "Item", item.id, "Item")
+
+    assert len(results) == 1
+    assert results[0]["id"] == item.id
+    assert results[0]["name"] == "手电筒"

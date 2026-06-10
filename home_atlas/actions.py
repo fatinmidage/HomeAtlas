@@ -1,3 +1,10 @@
+"""Action implementations for HomeAtlas.
+
+The dispatcher is the primary permission and confirmation gate. These functions
+also keep their local checks as defense in depth because tests and internal code
+may call actions directly.
+"""
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -127,6 +134,7 @@ def add_item(
     check_action_permission(session, actor_id, "AddItem")
     properties = properties or {}
     scan_sensitive_text(name, "name")
+    scan_sensitive_text(location_name, "location_name")
     scan_sensitive_text(notes, "notes")
     scan_sensitive_text(properties, "properties")
     if kind == ItemKind.PAYMENT_CARD:
@@ -165,6 +173,7 @@ def add_item(
 
 def move_item(session: Session, *, actor_id: int, item_id: int, location_name: str) -> Item:
     check_action_permission(session, actor_id, "MoveItem")
+    scan_sensitive_text(location_name, "location_name")
     item = _item(session, item_id)
     before = _snapshot(item)
     location = _location(session, location_name)
@@ -280,6 +289,7 @@ def upsert_card_reference(
 ) -> Item:
     check_action_permission(session, actor_id, "UpsertCardReference")
     scan_sensitive_text(name, "name")
+    scan_sensitive_text(location_name, "location_name")
     scan_sensitive_text(properties, "properties")
     if card_type == ItemKind.PAYMENT_CARD:
         reject_payment_card_secrets(properties)
