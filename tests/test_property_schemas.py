@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from home_atlas.models import ItemKind
@@ -36,7 +38,7 @@ def test_food_strips_none_values() -> None:
 
 def test_appliance_accepts_all_fields() -> None:
     result = validate_item_properties(
-        ItemKind.APPLIANCE, {"brand": "Dyson", "model": "V15", "warranty_expiry": "2027-06-01"}
+        ItemKind.APPLIANCE, {"brand": "Dyson", "model": "V15", "warranty_expiry": date(2027, 6, 1)}
     )
     assert result == {"brand": "Dyson", "model": "V15", "warranty_expiry": "2027-06-01"}
 

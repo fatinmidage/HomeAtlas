@@ -97,3 +97,14 @@ def test_auto_traverse_item_to_parent(session: Session, actor_id: int) -> None:
     results = auto_traverse(session, "Item", item.id, "Location")
     assert len(results) == 1
     assert results[0]["name"] == "床头柜"
+
+
+def test_auto_traverse_location_to_items_uses_inverse_link(session: Session, actor_id: int) -> None:
+    item = actions.add_item(
+        session, actor_id=actor_id, name="钥匙", kind=ItemKind.OTHER, location_name="玄关柜"
+    )
+    location_id = item.location_id
+
+    results = auto_traverse(session, "Location", location_id, "Item")
+
+    assert [result["name"] for result in results] == ["钥匙"]

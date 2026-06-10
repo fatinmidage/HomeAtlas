@@ -7,7 +7,7 @@
 > | R1 | 安全堵漏（REST 认证 / RBAC / 敏感数据护栏） | 🔴 高危 | ☑ |
 > | R2 | 统一 Action Dispatcher，让 Registry 元数据真正生效 | 🟠 高 | ☑ |
 > | R3 | 审计与副作用正确性（post-commit 派发 / version 并发） | 🟠 中 | ☑ |
-> | R4 | 本体一致性（命名空间统一 / 单一事实源 / 双向 Link） | 🟡 中 | ☐ |
+> | R4 | 本体一致性（命名空间统一 / 单一事实源 / 双向 Link） | 🟡 中 | ☑ |
 > | R5 | AI 与读函数全面成为 Registry 投影 | 🟡 中 | ☐ |
 > | R6 | 清尾与文档对齐 | ⚪ 低 | ☐ |
 
@@ -198,6 +198,8 @@ Link 连接注册类型、属性只有一份定义」。
 
 **完成标准**：`uv run pytest` 全绿 →
 commit `refactor(R4): unify ontology namespace, single property source, bidirectional links`。
+
+实际结果：`uv run pytest` 全绿；Person / Location / Event / Item 已注册为 Object Type；Property schema 由 Registry 生成；Link 支持 inverse traversal。
 
 ---
 

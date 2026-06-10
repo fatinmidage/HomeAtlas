@@ -1,85 +1,55 @@
-"""Per-ObjectType Pydantic validation models for the properties JSON pocket."""
+"""Registry-derived Pydantic validation models for item properties."""
 
 from __future__ import annotations
 
 import re
+from datetime import date
 from typing import Any
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, create_model, field_validator
 
 from home_atlas.models import ItemKind
 from home_atlas.security import HomeAtlasError
 
 
-class FoodProperties(BaseModel):
-    brand: str | None = None
-    weight: str | None = None
+class PaymentCardPropertiesBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-
-class MedicineProperties(BaseModel):
-    dosage: str | None = None
-    prescription: bool | None = None
-
-
-class InsurancePolicyProperties(BaseModel):
-    policy_number: str | None = None
-    provider: str | None = None
-
-
-class PaymentCardProperties(BaseModel, extra="forbid"):
-    issuer: str | None = None
-    card_type: str | None = None
-    last4: str | None = None
-    expiry_my: str | None = None
-    physical_location: str | None = None
-
-    @field_validator("last4")
+    @field_validator("last4", check_fields=False)
     @classmethod
-    def validate_last4(cls, v: str | None) -> str | None:
-        if v is not None and not re.fullmatch(r"\d{4}", v):
+    def validate_last4(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(r"\d{4}", value):
             raise ValueError("last4 must be exactly four digits")
-        return v
+        return value
 
 
-class MembershipCardProperties(BaseModel):
-    member_id: str | None = None
-    issuer: str | None = None
+def _schema_for_kind(kind: ItemKind) -> type[BaseModel] | None:
+    from home_atlas.ontology import get_registry
 
-
-class DocumentProperties(BaseModel):
-    document_number: str | None = None
-    issuing_authority: str | None = None
-
-
-class ToolProperties(BaseModel):
-    brand: str | None = None
-    model: str | None = None
-
-
-class ApplianceProperties(BaseModel):
-    brand: str | None = None
-    model: str | None = None
-    warranty_expiry: str | None = None
-
-
-PROPERTY_SCHEMAS: dict[ItemKind, type[BaseModel]] = {
-    ItemKind.FOOD: FoodProperties,
-    ItemKind.MEDICINE: MedicineProperties,
-    ItemKind.INSURANCE_POLICY: InsurancePolicyProperties,
-    ItemKind.PAYMENT_CARD: PaymentCardProperties,
-    ItemKind.MEMBERSHIP_CARD: MembershipCardProperties,
-    ItemKind.DOCUMENT: DocumentProperties,
-    ItemKind.TOOL: ToolProperties,
-    ItemKind.APPLIANCE: ApplianceProperties,
-}
+    ot = get_registry().object_type_for_kind(kind)
+    if ot is None or not ot.typed_properties:
+        return None
+    fields = {
+        prop.name: (prop.python_type | None, ... if prop.required else None)
+        for prop in ot.typed_properties
+    }
+    base = PaymentCardPropertiesBase if kind == ItemKind.PAYMENT_CARD else BaseModel
+    return create_model(f"{ot.api_name}Properties", __base__=base, **fields)
 
 
 def validate_item_properties(kind: ItemKind, properties: dict[str, Any]) -> dict[str, Any]:
-    schema = PROPERTY_SCHEMAS.get(kind)
+    schema = _schema_for_kind(kind)
     if schema is None:
         return properties
     try:
         validated = schema.model_validate(properties)
     except Exception as exc:
         raise HomeAtlasError(f"invalid properties for {kind.value}: {exc}") from exc
-    return validated.model_dump(exclude_none=True)
+    return _serialize_properties(validated.model_dump(exclude_none=True))
+
+
+def _serialize_properties(properties: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value.isoformat() if isinstance(value, date) else value
+        for key, value in properties.items()
+    }

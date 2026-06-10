@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from home_atlas.models import Event, EventAction, Item, ItemDomain, ItemKind, Location, Person, domain_for_kind
-from home_atlas.ontology import OntologyRegistry, build_registry, get_registry
+from home_atlas.ontology import LinkTypeDef, OntologyRegistry, build_registry, get_registry
 from home_atlas.security import HomeAtlasError
 
 
@@ -92,12 +92,28 @@ def test_get_registry_is_singleton() -> None:
 def test_registry_to_dict_returns_all_types(registry: OntologyRegistry) -> None:
     d = registry.to_dict()
     assert d["schema_version"] == 1
-    assert len(d["object_types"]) == len(ItemKind)
+    assert len(d["object_types"]) == len(ItemKind) + 4
     assert len(d["link_types"]) == 6
     assert len(d["action_types"]) == len(EventAction)
     for ot in d["object_types"]:
         assert "api_name" in ot
         assert "typed_properties" in ot
+
+
+def test_ontology_describes_table_entities(registry: OntologyRegistry) -> None:
+    text = registry.describe_for_llm()
+    assert "## Person" in text
+    assert "## Location" in text
+    assert "## Event" in text
+
+
+def test_registry_rejects_link_with_unregistered_endpoint() -> None:
+    registry = OntologyRegistry()
+    registry.register_object_type(build_registry().object_types["Item"])
+    registry.register_link_type(LinkTypeDef("badLink", "Item", "Missing", "location_id"))
+
+    with pytest.raises(HomeAtlasError, match="target type is not registered"):
+        registry.validate_links()
 
 
 def test_keywords_for_domain_returns_non_empty(registry: OntologyRegistry) -> None:

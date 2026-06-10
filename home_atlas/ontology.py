@@ -11,8 +11,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from home_atlas.models import EventAction, ItemDomain, ItemKind, domain_for_kind
-from home_atlas.property_schemas import validate_item_properties
+from home_atlas.models import Event, EventAction, Item, ItemDomain, ItemKind, Location, Person, domain_for_kind
 from home_atlas.security import HomeAtlasError
 
 
@@ -37,8 +36,10 @@ class PropertyDef:
 @dataclass(frozen=True)
 class ObjectTypeDef:
     api_name: str
-    item_kind: ItemKind
-    domain: ItemDomain
+    item_kind: ItemKind | None = None
+    domain: ItemDomain | None = None
+    table: str = ""
+    parent: str | None = None
     typed_properties: tuple[PropertyDef, ...] = ()
     keywords: tuple[str, ...] = ()
     description: str = ""
@@ -46,8 +47,10 @@ class ObjectTypeDef:
     def to_dict(self) -> dict[str, Any]:
         return {
             "api_name": self.api_name,
-            "item_kind": self.item_kind.value,
-            "domain": self.domain.value,
+            "item_kind": self.item_kind.value if self.item_kind else None,
+            "domain": self.domain.value if self.domain else None,
+            "table": self.table,
+            "parent": self.parent,
             "typed_properties": [p.to_dict() for p in self.typed_properties],
             "keywords": list(self.keywords),
             "description": self.description,
@@ -61,6 +64,7 @@ class LinkTypeDef:
     target_type: str
     fk_column: str
     cardinality: str = "many-to-one"
+    inverse_name: str | None = None
     description: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -70,6 +74,7 @@ class LinkTypeDef:
             "target_type": self.target_type,
             "fk_column": self.fk_column,
             "cardinality": self.cardinality,
+            "inverse_name": self.inverse_name,
             "description": self.description,
         }
 
@@ -150,13 +155,14 @@ class OntologyRegistry:
             return []
         return [
             at for at in self.action_types.values()
-            if ot.item_kind in at.applicable_to
+            if ot.item_kind is not None and ot.item_kind in at.applicable_to
         ]
 
     def validate_properties(self, api_name: str, properties: dict[str, Any]) -> dict[str, Any]:
         ot = self.object_types.get(api_name)
-        if ot is None:
+        if ot is None or ot.item_kind is None:
             raise HomeAtlasError(f"unknown object type: {api_name}")
+        from home_atlas.property_schemas import validate_item_properties
         return validate_item_properties(ot.item_kind, properties)
 
     def resolve_action(self, api_name: str) -> Any:
@@ -188,6 +194,8 @@ class OntologyRegistry:
         adj: dict[str, list[tuple[str, str]]] = {}
         for lt in self.link_types.values():
             adj.setdefault(lt.source_type, []).append((lt.target_type, lt.api_name))
+            if lt.inverse_name:
+                adj.setdefault(lt.target_type, []).append((lt.source_type, lt.inverse_name))
         queue: deque[tuple[str, list[str]]] = deque([(source_type, [])])
         visited: set[str] = {source_type}
         while queue:
@@ -225,7 +233,9 @@ class OntologyRegistry:
             actions_desc = ", ".join(a.api_name for a in actions)
             parts.append(
                 f"## {ot.api_name}\n"
-                f"Kind: {ot.item_kind.value}, Domain: {ot.domain.value}\n"
+                f"Kind: {ot.item_kind.value if ot.item_kind else '(none)'}, "
+                f"Domain: {ot.domain.value if ot.domain else '(none)'}, "
+                f"Table: {ot.table or '(none)'}\n"
                 f"{ot.description}\n"
                 f"Properties: {props_desc or '(none)'}\n"
                 f"Actions: {actions_desc or '(none)'}"
@@ -249,6 +259,18 @@ class OntologyRegistry:
             )
         return "\n".join(lines)
 
+    def validate_links(self) -> None:
+        model_map = {"Item": Item, "Location": Location, "Person": Person, "Event": Event}
+        for link in self.link_types.values():
+            if link.source_type not in self.object_types:
+                raise HomeAtlasError(f"link {link.api_name} source type is not registered: {link.source_type}")
+            if link.target_type not in self.object_types:
+                raise HomeAtlasError(f"link {link.api_name} target type is not registered: {link.target_type}")
+            owner_type = link.target_type if link.cardinality == "one-to-many" else link.source_type
+            owner = model_map.get(owner_type)
+            if owner is None or not hasattr(owner, link.fk_column):
+                raise HomeAtlasError(f"link {link.api_name} fk column not found: {owner_type}.{link.fk_column}")
+
 
 # ---------------------------------------------------------------------------
 # Registry construction
@@ -256,9 +278,31 @@ class OntologyRegistry:
 
 _OBJECT_TYPES: list[ObjectTypeDef] = [
     ObjectTypeDef(
+        api_name="Item",
+        table="item",
+        description="所有库存物品的基类型",
+    ),
+    ObjectTypeDef(
+        api_name="Person",
+        table="person",
+        description="家庭成员 / 操作 actor",
+    ),
+    ObjectTypeDef(
+        api_name="Location",
+        table="location",
+        description="家庭中的存放位置",
+    ),
+    ObjectTypeDef(
+        api_name="Event",
+        table="event",
+        description="审计事件",
+    ),
+    ObjectTypeDef(
         api_name="Food",
         item_kind=ItemKind.FOOD,
         domain=ItemDomain.PERISHABLE,
+        table="item",
+        parent="Item",
         typed_properties=(
             PropertyDef("brand", str, description="品牌"),
             PropertyDef("weight", str, description="重量/容量"),
@@ -270,6 +314,8 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
         api_name="Medicine",
         item_kind=ItemKind.MEDICINE,
         domain=ItemDomain.PERISHABLE,
+        table="item",
+        parent="Item",
         typed_properties=(
             PropertyDef("dosage", str, description="剂量"),
             PropertyDef("prescription", bool, description="是否处方药"),
@@ -281,6 +327,8 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
         api_name="InsurancePolicy",
         item_kind=ItemKind.INSURANCE_POLICY,
         domain=ItemDomain.CARDS_DOCS,
+        table="item",
+        parent="Item",
         typed_properties=(
             PropertyDef("policy_number", str, secret=True, description="保单号"),
             PropertyDef("provider", str, description="保险公司"),
@@ -292,6 +340,8 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
         api_name="PaymentCard",
         item_kind=ItemKind.PAYMENT_CARD,
         domain=ItemDomain.CARDS_DOCS,
+        table="item",
+        parent="Item",
         typed_properties=(
             PropertyDef("issuer", str, description="发卡行"),
             PropertyDef("card_type", str, description="卡类型 (credit/debit)"),
@@ -306,6 +356,8 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
         api_name="MembershipCard",
         item_kind=ItemKind.MEMBERSHIP_CARD,
         domain=ItemDomain.CARDS_DOCS,
+        table="item",
+        parent="Item",
         typed_properties=(
             PropertyDef("member_id", str, secret=True, description="会员号"),
             PropertyDef("issuer", str, description="发行方"),
@@ -317,6 +369,8 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
         api_name="Document",
         item_kind=ItemKind.DOCUMENT,
         domain=ItemDomain.CARDS_DOCS,
+        table="item",
+        parent="Item",
         typed_properties=(
             PropertyDef("document_number", str, secret=True, description="证件号"),
             PropertyDef("issuing_authority", str, description="签发机关"),
@@ -328,6 +382,8 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
         api_name="Tool",
         item_kind=ItemKind.TOOL,
         domain=ItemDomain.EQUIPMENT,
+        table="item",
+        parent="Item",
         typed_properties=(
             PropertyDef("brand", str, description="品牌"),
             PropertyDef("model", str, description="型号"),
@@ -339,6 +395,8 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
         api_name="Appliance",
         item_kind=ItemKind.APPLIANCE,
         domain=ItemDomain.EQUIPMENT,
+        table="item",
+        parent="Item",
         typed_properties=(
             PropertyDef("brand", str, description="品牌"),
             PropertyDef("model", str, description="型号"),
@@ -351,17 +409,19 @@ _OBJECT_TYPES: list[ObjectTypeDef] = [
         api_name="Other",
         item_kind=ItemKind.OTHER,
         domain=ItemDomain.OTHER,
+        table="item",
+        parent="Item",
         description="其他物品",
     ),
 ]
 
 _LINK_TYPES: list[LinkTypeDef] = [
-    LinkTypeDef("storedAt", "Item", "Location", "location_id", "many-to-one", "物品存放在哪个位置"),
-    LinkTypeDef("addedBy", "Item", "Person", "added_by_id", "many-to-one", "谁添加了这个物品"),
-    LinkTypeDef("updatedBy", "Item", "Person", "updated_by_id", "many-to-one", "谁最后更新了这个物品"),
-    LinkTypeDef("parentLocation", "Location", "Location", "parent_id", "many-to-one", "位置的父级位置"),
-    LinkTypeDef("itemEvents", "Item", "Event", "item_id", "one-to-many", "物品的事件历史"),
-    LinkTypeDef("actorEvents", "Person", "Event", "actor_id", "one-to-many", "某人的操作历史"),
+    LinkTypeDef("storedAt", "Item", "Location", "location_id", "many-to-one", "itemsStored", "物品存放在哪个位置"),
+    LinkTypeDef("addedBy", "Item", "Person", "added_by_id", "many-to-one", "itemsAdded", "谁添加了这个物品"),
+    LinkTypeDef("updatedBy", "Item", "Person", "updated_by_id", "many-to-one", "itemsUpdated", "谁最后更新了这个物品"),
+    LinkTypeDef("parentLocation", "Location", "Location", "parent_id", "many-to-one", "childLocations", "位置的父级位置"),
+    LinkTypeDef("itemEvents", "Item", "Event", "item_id", "one-to-many", "eventItem", "物品的事件历史"),
+    LinkTypeDef("actorEvents", "Person", "Event", "actor_id", "one-to-many", "eventActor", "某人的操作历史"),
 ]
 
 _ALL_KINDS = frozenset(ItemKind)
@@ -488,12 +548,14 @@ _ACTION_TYPES: list[ActionTypeDef] = [
 def build_registry() -> OntologyRegistry:
     registry = OntologyRegistry()
     for ot in _OBJECT_TYPES:
-        assert ot.domain == domain_for_kind(ot.item_kind)
+        if ot.item_kind is not None:
+            assert ot.domain == domain_for_kind(ot.item_kind)
         registry.register_object_type(ot)
     for lt in _LINK_TYPES:
         registry.register_link_type(lt)
     for at in _ACTION_TYPES:
         registry.register_action_type(at)
+    registry.validate_links()
     return registry
 
 

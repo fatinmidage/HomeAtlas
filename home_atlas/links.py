@@ -7,15 +7,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlmodel import Session
 
-from home_atlas.ontology import get_registry
+from home_atlas.ontology import LinkTypeDef, get_registry
 from home_atlas.security import HomeAtlasError
-
-_TABLE_FOR_TYPE = {
-    "Item": "item",
-    "Location": "location",
-    "Person": "person",
-    "Event": "event",
-}
 
 
 def traverse_link(
@@ -25,22 +18,26 @@ def traverse_link(
     link_name: str,
 ) -> list[dict[str, Any]]:
     registry = get_registry()
-    lt = registry.link_types.get(link_name)
+    lt, reverse = _resolve_link(link_name)
     if lt is None:
         raise HomeAtlasError(f"unknown link type: {link_name}")
-    if lt.source_type != source_type:
+    expected_source = lt.target_type if reverse else lt.source_type
+    if expected_source != source_type:
         raise HomeAtlasError(
-            f"link {link_name} expects source {lt.source_type}, got {source_type}"
+            f"link {link_name} expects source {expected_source}, got {source_type}"
         )
 
-    target_table = _TABLE_FOR_TYPE.get(lt.target_type)
+    target_type = lt.source_type if reverse else lt.target_type
+    target_table = _table_for_type(target_type)
     if target_table is None:
-        raise HomeAtlasError(f"unmapped target type: {lt.target_type}")
+        raise HomeAtlasError(f"unmapped target type: {target_type}")
 
-    if lt.cardinality == "one-to-many":
+    if reverse:
+        query = _reverse_query(lt, target_table)
+    elif lt.cardinality == "one-to-many":
         query = text(f"SELECT * FROM {target_table} WHERE {lt.fk_column} = :sid")
     else:
-        source_table = _TABLE_FOR_TYPE.get(lt.source_type)
+        source_table = _table_for_type(lt.source_type)
         if source_table is None:
             raise HomeAtlasError(f"unmapped source type: {lt.source_type}")
         query = text(
@@ -64,7 +61,7 @@ def traverse_chain(
     current_results = [{"id": source_id}]
 
     for link_name in link_names:
-        lt = registry.link_types.get(link_name)
+        lt, reverse = _resolve_link(link_name)
         if lt is None:
             raise HomeAtlasError(f"unknown link type: {link_name}")
         next_results: list[dict[str, Any]] = []
@@ -72,7 +69,7 @@ def traverse_chain(
             next_results.extend(
                 traverse_link(session, current_type, item["id"], link_name)
             )
-        current_type = lt.target_type
+        current_type = lt.source_type if reverse else lt.target_type
         current_results = next_results
         if not current_results:
             break
@@ -89,5 +86,32 @@ def auto_traverse(
     registry = get_registry()
     path = registry.shortest_path(source_type, target_type)
     if not path:
-        return traverse_link(session, source_type, source_id, target_type)
+        return [{"id": source_id}]
     return traverse_chain(session, source_type, source_id, path)
+
+
+def _resolve_link(link_name: str) -> tuple[LinkTypeDef | None, bool]:
+    registry = get_registry()
+    lt = registry.link_types.get(link_name)
+    if lt is not None:
+        return lt, False
+    for candidate in registry.link_types.values():
+        if candidate.inverse_name == link_name:
+            return candidate, True
+    return None, False
+
+
+def _table_for_type(type_name: str) -> str | None:
+    ot = get_registry().object_types.get(type_name)
+    return ot.table if ot else None
+
+
+def _reverse_query(lt: LinkTypeDef, target_table: str):
+    if lt.cardinality == "one-to-many":
+        source_table = _table_for_type(lt.target_type)
+        return text(
+            f"SELECT t.* FROM {target_table} t "
+            f"JOIN {source_table} s ON s.{lt.fk_column} = t.id "
+            f"WHERE s.id = :sid"
+        )
+    return text(f"SELECT * FROM {target_table} WHERE {lt.fk_column} = :sid")
