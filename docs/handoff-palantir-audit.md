@@ -8,14 +8,14 @@
 
 ## 1. 当前状态一句话
 
-**代码层 9 项修复全部落地且经实测验证（P0×4 + P1×5），本轮又完成 2 项 P2 低风险代码修复与 README 更新；
-剩余硬阻塞只有 1 项：🔴 生产库收编（部署新代码前必须做，库还是旧 schema）。**
+**代码层 9 项修复全部落地且经实测验证（P0×4 + P1×5），本轮又完成 2 项 P2 低风险代码修复、README 更新与生产库收编；
+当前无硬阻塞。**
 
 | 板块 | 状态 |
 |---|---|
 | P0-1~4（schema 治理 / REST） | ✅ 已修复，已验证 |
 | P1-1~5（masking / 治理入口 / 时区 / 确定性 / 过滤语义） | ✅ 已修复，已验证 |
-| 生产库收编（原 Commit 4） | 🔴 **未做——当前唯一硬阻塞** |
+| 生产库收编（原 Commit 4） | ✅ 已完成，生产库已重建为 Alembic schema |
 | README 与部署文档 | ✅ 已更新，补充 init-db 硬顺序与 Docker Compose 部署 |
 | P2 备选项 | 🟡 部分完成（#12、#13 已修复；其余仍可选） |
 
@@ -40,9 +40,9 @@ PG 集成（一次性容器）：**3/3 passed**，含"alembic 建表 + JSONB 过
 
 ---
 
-## 3. 🔴 整改一：生产库收编（部署新代码的前置条件）
+## 3. ✅ 整改一：生产库收编（已完成）
 
-### 现状（2026-06-11 复核实查）
+### 原现状（2026-06-11 复核实查）
 
 生产 `homeatlas-postgres` 仍是旧 `create_all` 快照：`properties/before/after` 为 `json`、
 `eventaction` 7 值、时间戳无时区、**无 `alembic_version`、无 `schema_metadata`**；
@@ -104,10 +104,25 @@ docker exec homeatlas-postgres psql -U home_atlas -d home_atlas \
 
 ### 验证标准（收编完成的定义）
 
-- [ ] `alembic_version` = `0009_timezone_aware_timestamps`，`schema_metadata` = 2
-- [ ] 服务稳定运行（无 crash loop），日志无 schema 警告
-- [ ] 双端验证通过：A token 写、B token 读、`上次谁动了X` 显示 A
-- [ ] `SetPersonRole` 在生产可执行并产生 Event（旧库上这是必炸路径）
+- [x] `alembic_version` = `0009_timezone_aware_timestamps`，`schema_metadata` = 2
+- [x] 服务稳定运行（无 crash loop），日志无 schema 警告
+- [x] 双端验证通过：A token 写、B token 读、DB `last_touched` 事件 actor 显示 A
+- [x] `SetPersonRole` 在生产可执行并产生 Event（旧库上这是必炸路径）
+
+### 执行记录（2026-06-11）
+
+| 步骤 | 结果 |
+|---|---|
+| 备份 | `backups/pre-reonboard-20260611.dump`，`pg_restore -l` 可识别 |
+| 旧数据抄录 | `backups/pre-reonboard-20260611-items.tsv` |
+| 删库重建 | `DROP DATABASE home_atlas` → `CREATE DATABASE home_atlas` |
+| 迁移 | `docker compose run --rm home_atlas python -m home_atlas.cli init-db` 全链 0001→0009 成功 |
+| 重录 | `鸡腿软骨 / 冰箱冷冻层`、`豆腐乳 / 厨房柜子` 已重录 |
+| 双端验证 | `ok=true`；writer=`你`，reader=`配偶`，Event actor=`你` |
+| 管理动作验证 | `SetPersonRole` 成功写入 `SET_PERSON_ROLE` Event |
+| 服务状态 | `homeatlas-service` Up；日志显示 Uvicorn 正常启动，无 schema 错误 |
+
+额外修复：`docker-compose.yml` 已补传 `HOME_ATLAS_ADMINS`，否则 `init-db` 看不到 `.env` 中的管理员配置，`SetPersonRole` 会因无人拥有 admin 权限而失败。
 
 ---
 

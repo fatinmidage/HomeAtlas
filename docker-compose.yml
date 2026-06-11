@@ -31,6 +31,7 @@ services:
       HOME_ATLAS_DATABASE_URL: postgresql+psycopg://home_atlas:${POSTGRES_PASSWORD}@postgres:5432/home_atlas
       HOME_ATLAS_READONLY_DATABASE_URL: postgresql+psycopg://home_atlas_readonly:${HOME_ATLAS_READONLY_PASSWORD:?set HOME_ATLAS_READONLY_PASSWORD in .env}@postgres:5432/home_atlas
       HOME_ATLAS_TOKEN_MAP: ${HOME_ATLAS_TOKEN_MAP}
+      HOME_ATLAS_ADMINS: ${HOME_ATLAS_ADMINS:-}
       HOME_ATLAS_AGENT_MODE: ${HOME_ATLAS_AGENT_MODE:-auto}
       HOME_ATLAS_LLM_MODEL: ${HOME_ATLAS_LLM_MODEL:-}
       HOME_ATLAS_LLM_API_KEY: ${HOME_ATLAS_LLM_API_KEY:-}
