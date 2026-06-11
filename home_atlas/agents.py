@@ -136,7 +136,7 @@ def build_agents(model: str) -> HomeAtlasAgents:
         """Return the most recent audit event and actor for any household item."""
 
         try:
-            return actions.last_touched(ctx.deps.session, name)
+            return dispatch_function(ctx.deps.session, ctx.deps.actor_id, "last_touched", {"name": name})
         except HomeAtlasError as exc:
             return {"error": str(exc)}
 
@@ -144,13 +144,18 @@ def build_agents(model: str) -> HomeAtlasAgents:
     def atlas_list_expiring(ctx: RunContext[HomeAtlasDeps], within_days: int = 30) -> list[dict[str, Any]]:
         """List items with expiry or renewal dates within the given number of days."""
 
-        return actions.list_expiring(ctx.deps.session, within_days=within_days)
+        return dispatch_function(
+            ctx.deps.session,
+            ctx.deps.actor_id,
+            "list_expiring",
+            {"within_days": within_days},
+        )
 
     @orchestrator_toolset.tool
     def atlas_list_items(ctx: RunContext[HomeAtlasDeps]) -> list[dict[str, Any]]:
         """List all non-archived household inventory items across every domain."""
 
-        return actions.search_items(ctx.deps.session)
+        return dispatch_function(ctx.deps.session, ctx.deps.actor_id, "search_items", {})
 
     @orchestrator_toolset.tool
     def atlas_traverse_links(

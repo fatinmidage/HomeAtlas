@@ -6,10 +6,9 @@ from typing import Any
 
 from sqlmodel import Session
 
-from home_atlas import actions
 from home_atlas.agents import run_ai_home_atlas, should_use_ai
 from home_atlas.config import Settings
-from home_atlas.dispatcher import dispatch_action
+from home_atlas.dispatcher import dispatch_action, dispatch_function
 from home_atlas.llm_config import ACTIVE_LLM, has_configured_api_key
 from home_atlas.models import ItemDomain, ItemKind
 from home_atlas.ontology import get_registry
@@ -58,24 +57,27 @@ def home_atlas(request: str, session: Session, actor_id: int, settings: Settings
         return run_ai_home_atlas(request, session, actor_id, settings)
     routed = route_request(request)
     if routed.intent == "where_is":
-        item = actions.where_is(session, routed.args["name"])
+        item = dispatch_function(session, actor_id, "where_is", {"name": routed.args["name"]})
         return {"intent": routed.intent, "answer": f"{item['name']} 在 {item['location']}", "item": item}
     if routed.intent == "last_touched":
-        event = actions.last_touched(session, routed.args["name"])
+        event = dispatch_function(session, actor_id, "last_touched", {"name": routed.args["name"]})
         return {
             "intent": routed.intent,
             "answer": f"{event['item']} 上次由 {event['actor']} 执行 {event['action']}",
             "event": event,
         }
     if routed.intent == "list_expiring":
-        items = actions.list_expiring(session, routed.args["within_days"])
+        items = dispatch_function(session, actor_id, "list_expiring", {"within_days": routed.args["within_days"]})
         return {"intent": routed.intent, "items": items}
     if routed.intent == "list_items":
-        return {"intent": routed.intent, "items": actions.search_items(session)}
+        return {"intent": routed.intent, "items": dispatch_function(session, actor_id, "search_items", {})}
     if routed.intent == "put_item":
         return _put_item(session, actor_id, routed)
     if routed.intent == "search":
-        return {"intent": routed.intent, "items": actions.search_items(session, query=routed.args["query"])}
+        return {
+            "intent": routed.intent,
+            "items": dispatch_function(session, actor_id, "search_items", {"query": routed.args["query"]}),
+        }
     raise ValueError(f"unsupported intent: {routed.intent}")
 
 
@@ -100,7 +102,7 @@ def _llm_configuration_notice(settings: Settings) -> dict[str, Any]:
 
 
 def _put_item(session: Session, actor_id: int, routed: RoutedRequest) -> dict[str, Any]:
-    existing = actions.search_items(session, query=routed.args["name"])
+    existing = dispatch_function(session, actor_id, "search_items", {"query": routed.args["name"]})
     exact = [item for item in existing if item["name"] == routed.args["name"]]
     if exact:
         item = dispatch_action(

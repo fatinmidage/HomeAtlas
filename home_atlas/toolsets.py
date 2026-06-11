@@ -6,8 +6,7 @@ from typing import Any
 
 from sqlmodel import Session
 
-from home_atlas import actions
-from home_atlas.dispatcher import dispatch_action
+from home_atlas.dispatcher import dispatch_action, dispatch_function
 from home_atlas.models import ItemDomain, ItemKind
 from home_atlas.ontology import get_registry
 
@@ -65,8 +64,8 @@ def _make_guarded_add(domain: ItemDomain, allowed_kinds: set[ItemKind]) -> Tool:
 
 
 def _make_domain_search(domain: ItemDomain) -> Tool:
-    def domain_search(session: Session, **kwargs: Any) -> list[dict[str, Any]]:
-        return actions.search_items(session, domain=domain, **kwargs)
+    def domain_search(session: Session, *, actor_id: int, **kwargs: Any) -> list[dict[str, Any]]:
+        return dispatch_function(session, actor_id, "search_items", {"domain": domain, **kwargs})
     return domain_search
 
 
@@ -105,7 +104,7 @@ def toolset_for_domain(domain: ItemDomain) -> DomainToolset:
 
     tools[f"{prefix}search"] = _make_domain_search(domain)
     if domain == ItemDomain.PERISHABLE:
-        tools[f"{prefix}list_expiring"] = actions.list_expiring
+        tools[f"{prefix}list_expiring"] = _make_list_expiring()
 
     return DomainToolset(name=domain.value, prefix=prefix, tools=tools)
 
@@ -114,6 +113,12 @@ def _make_dispatch_tool(action_name: str) -> Tool:
     def dispatch_tool(session: Session, *, actor_id: int, confirm: bool = False, **params: Any) -> Any:
         return dispatch_action(session, actor_id, action_name, params, confirm=confirm)
     return dispatch_tool
+
+
+def _make_list_expiring() -> Tool:
+    def list_expiring(session: Session, *, actor_id: int, within_days: int = 30) -> list[dict[str, Any]]:
+        return dispatch_function(session, actor_id, "list_expiring", {"within_days": within_days})
+    return list_expiring
 
 
 def perishable_toolset() -> DomainToolset:

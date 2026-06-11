@@ -14,10 +14,10 @@ from alembic.config import Config
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 
-from home_atlas import actions
 from home_atlas.backup import backup_database, verify_backup
 from home_atlas.config import Settings, get_settings
 from home_atlas.db import create_db_engine, seed_people_from_tokens, session_scope
+from home_atlas.dispatcher import dispatch_function
 from home_atlas.orchestrator import home_atlas
 from home_atlas.security import resolve_actor_id
 
@@ -148,7 +148,7 @@ def dual_smoke(
         write_result = home_atlas(f"把{item}放进{location}", session, writer_id, settings)
         where_result = home_atlas(f"{item}在哪？", session, reader_id, settings)
         audit = home_atlas(f"上次谁动了{item}？", session, reader_id, settings)
-        event = actions.last_touched(session, item)
+        event = dispatch_function(session, reader_id, "last_touched", {"name": item})
     writer_name = settings.token_map[writer_token]
     ok = event["actor"] == writer_name
     print(
