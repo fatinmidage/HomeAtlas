@@ -5,6 +5,7 @@ import os
 import pytest
 
 from home_atlas.config import Settings
+import home_atlas.db_isolation as db_isolation
 from home_atlas.db_isolation import verify_readonly_isolation
 
 
@@ -18,6 +19,25 @@ def test_verify_skipped_for_non_postgres():
     settings = Settings(_env_file=None, database_url="sqlite:///test.db", readonly_database_url="sqlite:///ro.db")
     result = verify_readonly_isolation(settings)
     assert result["status"] == "skipped"
+
+
+def test_verify_raises_when_readonly_database_cannot_connect(monkeypatch):
+    class BrokenEngine:
+        def connect(self):
+            raise ConnectionError("refused")
+
+        def dispose(self):
+            pass
+
+    monkeypatch.setattr(db_isolation, "create_engine", lambda url: BrokenEngine())
+    settings = Settings(
+        _env_file=None,
+        database_url="postgresql+psycopg://owner@localhost/home_atlas",
+        readonly_database_url="postgresql+psycopg://readonly@localhost/home_atlas",
+    )
+
+    with pytest.raises(RuntimeError, match="readonly database connection failed"):
+        verify_readonly_isolation(settings)
 
 
 _SKIP_REASON = (

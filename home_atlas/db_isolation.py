@@ -38,6 +38,14 @@ def verify_readonly_isolation(settings: Settings) -> dict[str, Any]:
     blocked: list[str] = []
     leaked: list[str] = []
 
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        msg = f"readonly database connection failed: {exc}"
+        logger.error(msg)
+        raise RuntimeError(msg) from exc
+
     for probe in _WRITE_PROBES:
         try:
             with engine.connect() as conn:

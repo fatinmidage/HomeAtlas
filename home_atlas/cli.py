@@ -210,7 +210,7 @@ def ensure_postgres_database(database_url: str) -> None:
 
 def _run_alembic_upgrade(settings: Settings) -> None:
     config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
-    config.set_main_option("sqlalchemy.url", settings.database_url)
+    config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
     command.upgrade(config, "head")
 
 

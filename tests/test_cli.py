@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from home_atlas import cli
 from home_atlas.cli import dual_smoke, init_db, smoke
 from home_atlas.config import Settings
 from home_atlas.llm_config import normalize_model_name
@@ -66,3 +67,24 @@ def test_settings_accepts_provider_api_key_alias() -> None:
 def test_deepseek_bare_model_name_is_normalized() -> None:
     assert normalize_model_name("deepseek-v4-flash") == "deepseek:deepseek-v4-flash"
     assert normalize_model_name("deepseek:deepseek-chat") == "deepseek:deepseek-chat"
+
+
+def test_alembic_upgrade_accepts_percent_encoded_database_url(monkeypatch) -> None:
+    seen: dict[str, str] = {}
+
+    def fake_upgrade(config, revision):
+        seen["revision"] = revision
+        seen["url"] = config.get_main_option("sqlalchemy.url")
+
+    monkeypatch.setattr(cli.command, "upgrade", fake_upgrade)
+    settings = Settings(
+        _env_file=None,
+        database_url="postgresql+psycopg://home_atlas:p%25ss@localhost/home_atlas",
+    )
+
+    cli._run_alembic_upgrade(settings)
+
+    assert seen == {
+        "revision": "head",
+        "url": "postgresql+psycopg://home_atlas:p%25ss@localhost/home_atlas",
+    }
