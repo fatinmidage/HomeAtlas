@@ -161,9 +161,14 @@ def test_postgres_alembic_schema_supports_jsonb_filter_and_set_person_role() -> 
             )
             set_person_role(session, actor_id=actor_id, person_name="配偶", role="viewer")
             results = search_items(session, property_filter={"issuing_authority": "出入境"})
+            event = session.exec(select(Event).where(Event.item_id == item.id).order_by(Event.id)).first()
+            assert event is not None
             item_id = item.id
+            event_created_at = event.created_at
 
         assert item_id is not None
+        assert event_created_at.tzinfo is not None
+        assert event_created_at.isoformat().endswith("+00:00")
         assert any(row["name"] == "PG迁移过滤测试" for row in results)
     finally:
         _drop_database(database_url)

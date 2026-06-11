@@ -22,6 +22,7 @@ from home_atlas.models import (
     Location,
     Person,
     domain_for_kind,
+    utc_isoformat,
     utc_now,
 )
 from home_atlas.event_bus import enqueue_event
@@ -469,7 +470,7 @@ def recent_activity(session: Session, limit: int = 10) -> list[dict[str, Any]]:
             "before": _masked_snapshot(event.before),
             "after": _masked_snapshot(event.after),
             "version": event.version,
-            "created_at": event.created_at.isoformat(),
+            "created_at": utc_isoformat(event.created_at),
         }
         for event, person in session.exec(statement).all()
     ]
@@ -493,7 +494,7 @@ def last_touched(session: Session, name: str) -> dict[str, Any]:
         "actor": person.name,
         "action": event.action.value,
         "summary": event.summary,
-        "created_at": event.created_at.isoformat(),
+        "created_at": utc_isoformat(event.created_at),
     }
 
 

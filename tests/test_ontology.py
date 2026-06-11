@@ -4,6 +4,7 @@ import pytest
 
 from home_atlas.models import Event, EventAction, Item, ItemDomain, ItemKind, Location, Person, domain_for_kind
 from home_atlas.ontology import LinkTypeDef, OntologyRegistry, build_registry, get_registry
+from home_atlas.schema_migration import CURRENT_SCHEMA_VERSION
 from home_atlas.security import HomeAtlasError
 
 
@@ -91,7 +92,7 @@ def test_get_registry_is_singleton() -> None:
 
 def test_registry_to_dict_returns_all_types(registry: OntologyRegistry) -> None:
     d = registry.to_dict()
-    assert d["schema_version"] == 1
+    assert d["schema_version"] == CURRENT_SCHEMA_VERSION
     assert len(d["object_types"]) == len(ItemKind) + 4
     assert len(d["link_types"]) == 6
     assert len(d["action_types"]) == len(EventAction)

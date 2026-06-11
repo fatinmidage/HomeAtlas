@@ -9,7 +9,7 @@ from sqlmodel import Field, Session, SQLModel, select
 
 logger = logging.getLogger(__name__)
 
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 
 class SchemaMetadata(SQLModel, table=True):

@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import Column, JSON
+from sqlalchemy import Column, DateTime, JSON
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -15,6 +15,16 @@ def json_column(**kwargs: Any) -> Column:
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def utc_isoformat(value: datetime) -> str:
+    return as_utc(value).isoformat()
 
 
 class ItemKind(StrEnum):
@@ -69,7 +79,10 @@ class Person(SQLModel, table=True):
         default_factory=lambda: ["member"],
         sa_column=Column(JSON, nullable=False, server_default='["member"]'),
     )
-    created_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
 
 class Location(SQLModel, table=True):
@@ -77,7 +90,10 @@ class Location(SQLModel, table=True):
     name: str = Field(index=True, unique=True)
     parent_id: int | None = Field(default=None, foreign_key="location.id")
     notes: str | None = None
-    created_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
 
 
 class Item(SQLModel, table=True):
@@ -98,8 +114,14 @@ class Item(SQLModel, table=True):
     notes: str | None = None
     added_by_id: int = Field(foreign_key="person.id")
     updated_by_id: int = Field(foreign_key="person.id")
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
     archived: bool = Field(default=False, index=True)
 
 
@@ -112,4 +134,7 @@ class Event(SQLModel, table=True):
     before: dict[str, Any] | None = Field(default=None, sa_column=json_column())
     after: dict[str, Any] | None = Field(default=None, sa_column=json_column())
     version: int | None = Field(default=None)
-    created_at: datetime = Field(default_factory=utc_now, index=True)
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False, index=True),
+    )

@@ -7,7 +7,7 @@ from typing import Any
 from sqlmodel import Session, select
 
 from home_atlas.actions import _item_dict, _masked_snapshot
-from home_atlas.models import Event, Item, Location, Person
+from home_atlas.models import Event, Item, Location, Person, utc_isoformat
 from home_atlas.ontology import LinkTypeDef, get_registry
 from home_atlas.security import HomeAtlasError
 
@@ -151,16 +151,16 @@ def _serialize_object(session: Session, type_name: str, row: Any) -> dict[str, A
             "before": _masked_snapshot(row.before),
             "after": _masked_snapshot(row.after),
             "version": row.version,
-            "created_at": row.created_at,
+            "created_at": utc_isoformat(row.created_at),
         }
     if type_name == "Person":
-        return {"id": row.id, "name": row.name, "roles": row.roles, "created_at": row.created_at}
+        return {"id": row.id, "name": row.name, "roles": row.roles, "created_at": utc_isoformat(row.created_at)}
     if type_name == "Location":
         return {
             "id": row.id,
             "name": row.name,
             "parent_id": row.parent_id,
             "notes": row.notes,
-            "created_at": row.created_at,
+            "created_at": utc_isoformat(row.created_at),
         }
     raise HomeAtlasError(f"unmapped target type: {type_name}")

@@ -150,7 +150,7 @@ class FunctionDef:
 
 @dataclass
 class OntologyRegistry:
-    schema_version: int = 1
+    schema_version: int = 2
     object_types: dict[str, ObjectTypeDef] = field(default_factory=dict)
     link_types: dict[str, LinkTypeDef] = field(default_factory=dict)
     action_types: dict[str, ActionTypeDef] = field(default_factory=dict)
