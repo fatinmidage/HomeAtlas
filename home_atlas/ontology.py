@@ -39,6 +39,8 @@ class ObjectTypeDef:
     item_kind: ItemKind | None = None
     domain: ItemDomain | None = None
     table: str = ""
+    primary_key: str = "id"
+    title_property: str = "name"
     parent: str | None = None
     typed_properties: tuple[PropertyDef, ...] = ()
     keywords: tuple[str, ...] = ()
@@ -50,6 +52,8 @@ class ObjectTypeDef:
             "item_kind": self.item_kind.value if self.item_kind else None,
             "domain": self.domain.value if self.domain else None,
             "table": self.table,
+            "primary_key": self.primary_key,
+            "title_property": self.title_property,
             "parent": self.parent,
             "typed_properties": [p.to_dict() for p in self.typed_properties],
             "keywords": list(self.keywords),

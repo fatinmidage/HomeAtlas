@@ -299,6 +299,7 @@ def upsert_card_reference(
         raise HomeAtlasError("card reference kind must be payment, membership, insurance, or document")
     existing = session.exec(
         select(Item).where(Item.name == name, Item.kind == card_type, Item.archived == False)  # noqa: E712
+        .order_by(Item.updated_at.desc(), Item.id.desc())
     ).first()
     if existing is None:
         return add_item(
@@ -394,6 +395,13 @@ def search_items(
     include_archived: bool = False,
     property_filter: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
+    """Search inventory items.
+
+    property_filter supports top-level scalar equality only. Nested objects and
+    arrays are intentionally rejected so SQLite and PostgreSQL keep one contract.
+    """
+
+    _validate_property_filter(property_filter)
     statement = select(Item, Location).join(Location, Item.location_id == Location.id)
     if not include_archived:
         statement = statement.where(Item.archived == False)  # noqa: E712
@@ -422,6 +430,7 @@ def search_items(
         statement = statement.where(
             Item.properties.op("@>")(cast(literal(_json.dumps(property_filter)), JSONB))
         )
+    statement = statement.order_by(Item.updated_at.desc(), Item.id.desc())
     rows = session.exec(statement).all()
     results = [_item_dict(item, loc) for item, loc in rows]
     if property_filter and dialect != "postgresql":
@@ -446,7 +455,18 @@ def where_is(session: Session, name: str) -> dict[str, Any]:
     candidates = exact or rows
     if not candidates:
         raise HomeAtlasError(f"{name} not found")
-    return candidates[0]
+    result = dict(candidates[0])
+    if len(candidates) > 1:
+        result["match_note"] = f"找到 {len(candidates)} 个同名/相近物品，返回最近更新的"
+    return result
+
+
+def _validate_property_filter(property_filter: dict[str, Any] | None) -> None:
+    if not property_filter:
+        return
+    for key, value in property_filter.items():
+        if isinstance(value, (dict, list)):
+            raise HomeAtlasError(f"property_filter.{key} only supports top-level scalar equality")
 
 
 def list_expiring(session: Session, within_days: int = 30) -> list[dict[str, Any]]:

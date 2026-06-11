@@ -58,7 +58,10 @@ def home_atlas(request: str, session: Session, actor_id: int, settings: Settings
     routed = route_request(request)
     if routed.intent == "where_is":
         item = dispatch_function(session, actor_id, "where_is", {"name": routed.args["name"]})
-        return {"intent": routed.intent, "answer": f"{item['name']} 在 {item['location']}", "item": item}
+        answer = f"{item['name']} 在 {item['location']}"
+        if item.get("match_note"):
+            answer = f"{answer}（{item['match_note']}）"
+        return {"intent": routed.intent, "answer": answer, "item": item}
     if routed.intent == "last_touched":
         event = dispatch_function(session, actor_id, "last_touched", {"name": routed.args["name"]})
         return {

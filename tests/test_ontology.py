@@ -98,6 +98,8 @@ def test_registry_to_dict_returns_all_types(registry: OntologyRegistry) -> None:
     assert len(d["action_types"]) == len(EventAction)
     for ot in d["object_types"]:
         assert "api_name" in ot
+        assert ot["primary_key"] == "id"
+        assert ot["title_property"] == "name"
         assert "typed_properties" in ot
 
 

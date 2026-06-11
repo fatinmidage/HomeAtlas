@@ -40,6 +40,30 @@ def test_add_move_and_audit_actor(session: Session, actor_id: int) -> None:
     assert all(event.actor_id == actor_id for event in events)
 
 
+def test_where_is_returns_most_recent_duplicate_name(session: Session, actor_id: int) -> None:
+    older = add_item(
+        session,
+        actor_id=actor_id,
+        name="备用钥匙",
+        kind=ItemKind.OTHER,
+        location_name="玄关柜",
+    )
+    newer = add_item(
+        session,
+        actor_id=actor_id,
+        name="备用钥匙",
+        kind=ItemKind.OTHER,
+        location_name="书房抽屉",
+    )
+
+    result = where_is(session, "备用钥匙")
+
+    assert older.id != newer.id
+    assert result["id"] == newer.id
+    assert result["location"] == "书房抽屉"
+    assert "返回最近更新的" in result["match_note"]
+
+
 def test_quantity_actions_validate_and_write_events(session: Session, actor_id: int) -> None:
     item = add_item(
         session,
@@ -282,3 +306,40 @@ def test_search_items_filters_by_property(session: Session, actor_id: int) -> No
 
     results_all = search_items(session)
     assert len(results_all) >= 2
+
+
+def test_search_items_rejects_nested_property_filter(session: Session) -> None:
+    with pytest.raises(HomeAtlasError, match="top-level scalar"):
+        search_items(session, property_filter={"details": {"brand": "蒙牛"}})
+
+
+def test_upsert_card_reference_updates_most_recent_duplicate(session: Session, actor_id: int) -> None:
+    older = add_item(
+        session,
+        actor_id=actor_id,
+        name="商场会员",
+        kind=ItemKind.MEMBERSHIP_CARD,
+        location_name="旧钱包",
+        properties={"member_id": "MEM00001111", "issuer": "商场"},
+    )
+    newer = add_item(
+        session,
+        actor_id=actor_id,
+        name="商场会员",
+        kind=ItemKind.MEMBERSHIP_CARD,
+        location_name="新钱包",
+        properties={"member_id": "MEM00002222", "issuer": "商场"},
+    )
+
+    updated = upsert_card_reference(
+        session,
+        actor_id=actor_id,
+        name="商场会员",
+        location_name="手机卡包",
+        card_type=ItemKind.MEMBERSHIP_CARD,
+        properties={"member_id": "MEM00003333", "issuer": "商场"},
+    )
+
+    assert updated.id == newer.id
+    assert where_is(session, "商场会员")["location"] == "手机卡包"
+    assert older.location_id != updated.location_id

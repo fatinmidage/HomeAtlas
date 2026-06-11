@@ -14,7 +14,7 @@ from home_atlas.cli import init_db
 from home_atlas.config import Settings
 from home_atlas.db import create_db_engine, create_tables, seed_people_from_tokens, session_scope
 from home_atlas.models import Event, Item, ItemKind, Person
-from home_atlas.security import resolve_actor_id
+from home_atlas.security import HomeAtlasError, resolve_actor_id
 
 
 def _temporary_database_url(base_url: str) -> str:
@@ -161,6 +161,8 @@ def test_postgres_alembic_schema_supports_jsonb_filter_and_set_person_role() -> 
             )
             set_person_role(session, actor_id=actor_id, person_name="配偶", role="viewer")
             results = search_items(session, property_filter={"issuing_authority": "出入境"})
+            with pytest.raises(HomeAtlasError, match="top-level scalar"):
+                search_items(session, property_filter={"details": {"issuing_authority": "出入境"}})
             event = session.exec(select(Event).where(Event.item_id == item.id).order_by(Event.id)).first()
             assert event is not None
             item_id = item.id
