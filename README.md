@@ -12,6 +12,9 @@ It exposes one high-level delegated tool, `home_atlas(request)`, while keeping w
 - Sensitive-data validation across names, locations, notes, and properties: no full 13-19 digit card numbers, including space- or hyphen-separated forms; no CVV/card-number keys; payment-card properties allow only reference fields
 - Token-to-person identity resolution; REST and MCP resolve actors server-side
 - RBAC defaults new people to `member`; admin-only actions include update, discard, and role changes
+- Startup schema gate: services refuse to start until Alembic migrations and schema metadata are current
+- Masked read outputs: registry read functions return MCP/REST-safe dictionaries
+- Deterministic lookup behavior for duplicate names, with newest match selected and ambiguity noted
 - Domain toolsets with prefixes: `perishable_*`, `card_*`, `equipment_*`
 - Rule-based orchestrator behind `home_atlas(request)` for local deterministic behavior
 - FastMCP construction hook and a small stdlib HTTP runner for local smoke tests
@@ -22,7 +25,12 @@ It exposes one high-level delegated tool, `home_atlas(request)`, while keeping w
 ```bash
 uv sync
 cp .env.example .env
+uv run python -m home_atlas.cli init-db
 ```
+
+Run `init-db` before starting any long-running entrypoint, including `home_atlas.mcp_server`,
+`home_atlas.http_server`, or the generated REST app. HomeAtlas no longer creates tables at
+service startup; it fails fast when the database schema is missing or older than the code.
 
 For local unit tests, no PostgreSQL server is required. Tests use an in-memory SQLite database while exercising the same SQLModel tables and Action layer.
 
@@ -57,7 +65,7 @@ Expected smoke result includes:
 If you manage PostgreSQL outside Docker, create a database, set `HOME_ATLAS_DATABASE_URL`, then run:
 
 ```bash
-uv run alembic upgrade head
+uv run python -m home_atlas.cli init-db
 ```
 
 Example connection string:
@@ -107,6 +115,7 @@ Set initial admins with `HOME_ATLAS_ADMINS` as a comma-separated name list match
 Run the FastMCP streamable HTTP server with bearer authentication:
 
 ```bash
+uv run python -m home_atlas.cli init-db
 uv run python -m home_atlas.mcp_server
 ```
 
@@ -164,6 +173,26 @@ Bare DeepSeek model names such as `deepseek-v4-flash` are normalized to Pydantic
 
 ## Home Server Process
 
+### Docker Compose
+
+The production-style compose stack runs PostgreSQL and the HomeAtlas MCP service together. The
+PostgreSQL container is only reachable on the internal compose network.
+
+```bash
+docker compose up -d postgres
+docker compose build home_atlas
+docker compose run --rm home_atlas python -m home_atlas.cli init-db
+docker compose up -d home_atlas
+docker logs homeatlas-service --tail 20
+```
+
+Use the same `compose run --rm home_atlas python -m home_atlas.cli init-db` step after pulling
+code that contains new migrations. If an existing deployment was created by an old `create_all`
+snapshot, migrate or rebuild the database before starting the new service; otherwise the schema
+gate will intentionally stop the service.
+
+### launchd
+
 The launchd template lives at `deploy/launchd/com.homeatlas.server.plist`. It runs:
 
 ```bash
@@ -176,6 +205,7 @@ Install on the home-server Mac:
 
 ```bash
 mkdir -p logs
+uv run python -m home_atlas.cli init-db
 cp deploy/launchd/com.homeatlas.server.plist ~/Library/LaunchAgents/com.homeatlas.server.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.homeatlas.server.plist
 launchctl kickstart -k gui/$(id -u)/com.homeatlas.server
@@ -223,6 +253,7 @@ Use `deploy/hermes/list_expiring_reminder.md` to configure a Hermes scheduled re
 The stdlib runner is intentionally small and useful before wiring a full MCP deployment. It uses the same `HOME_ATLAS_DATABASE_URL` and token map as the CLI:
 
 ```bash
+uv run python -m home_atlas.cli init-db
 uv run python -m home_atlas.http_server
 ```
 
