@@ -6,8 +6,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 from home_atlas.config import get_settings
-from home_atlas.db import create_db_engine, create_tables, seed_people_from_tokens, session_scope
+from home_atlas.db import create_db_engine, seed_people_from_tokens, session_scope
 from home_atlas.orchestrator import home_atlas
+from home_atlas.schema_migration import require_schema_version
 from home_atlas.security import HomeAtlasError, UnauthorizedError, resolve_actor_id
 
 
@@ -51,8 +52,8 @@ def _bearer_token(header: str | None) -> str | None:
 def main() -> None:
     settings = get_settings()
     engine = create_db_engine(settings)
-    create_tables(engine)
     with session_scope(engine) as session:
+        require_schema_version(session)
         seed_people_from_tokens(session, settings.token_map, settings.admins)
     HomeAtlasHandler.engine = engine
     HomeAtlasHandler.settings = settings

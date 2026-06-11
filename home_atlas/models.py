@@ -5,7 +5,12 @@ from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import Column, JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
+
+
+def json_column(**kwargs: Any) -> Column:
+    return Column(JSON().with_variant(JSONB(), "postgresql"), **kwargs)
 
 
 def utc_now() -> datetime:
@@ -88,7 +93,7 @@ class Item(SQLModel, table=True):
     purchase_date: date | None = None
     properties: dict[str, Any] = Field(
         default_factory=dict,
-        sa_column=Column(JSON, nullable=False),
+        sa_column=json_column(nullable=False),
     )
     notes: str | None = None
     added_by_id: int = Field(foreign_key="person.id")
@@ -104,7 +109,7 @@ class Event(SQLModel, table=True):
     actor_id: int = Field(foreign_key="person.id", index=True)
     action: EventAction = Field(index=True)
     summary: str
-    before: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
-    after: dict[str, Any] | None = Field(default=None, sa_column=Column(JSON))
+    before: dict[str, Any] | None = Field(default=None, sa_column=json_column())
+    after: dict[str, Any] | None = Field(default=None, sa_column=json_column())
     version: int | None = Field(default=None)
     created_at: datetime = Field(default_factory=utc_now, index=True)

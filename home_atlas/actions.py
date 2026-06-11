@@ -416,10 +416,10 @@ def search_items(
     dialect = session.bind.dialect.name if session.bind else "sqlite"
     if property_filter and dialect == "postgresql":
         from sqlalchemy.dialects.postgresql import JSONB
-        from sqlalchemy import cast, type_coerce
+        from sqlalchemy import cast, literal
         import json as _json
         statement = statement.where(
-            type_coerce(Item.properties, JSONB).op("@>")(cast(_json.dumps(property_filter), JSONB))
+            Item.properties.op("@>")(cast(literal(_json.dumps(property_filter)), JSONB))
         )
     rows = session.exec(statement).all()
     results = [_item_dict(item, loc) for item, loc in rows]

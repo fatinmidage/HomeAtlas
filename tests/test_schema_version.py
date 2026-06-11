@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import pytest
 from sqlmodel import Session
 
 from home_atlas.schema_migration import (
     CURRENT_SCHEMA_VERSION,
     SchemaMetadata,
     check_schema_version,
+    require_schema_version,
     update_schema_version,
 )
 
@@ -34,6 +36,11 @@ def test_check_schema_version_warns_when_missing(session: Session) -> None:
     result = check_schema_version(session)
     assert result["match"] is False
     assert result["db_version"] == 0
+
+
+def test_require_schema_version_raises_when_missing(session: Session) -> None:
+    with pytest.raises(RuntimeError, match="init-db"):
+        require_schema_version(session)
 
 
 def test_update_schema_version(session: Session) -> None:

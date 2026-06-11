@@ -6,11 +6,11 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from pydantic import BaseModel
-from home_atlas import actions
 from home_atlas.config import Settings, get_settings
-from home_atlas.db import create_db_engine, create_tables, seed_people_from_tokens, session_scope
+from home_atlas.db import create_db_engine, seed_people_from_tokens, session_scope
 from home_atlas.dispatcher import dispatch_action, dispatch_function
 from home_atlas.ontology import ObjectTypeDef, get_registry
+from home_atlas.schema_migration import require_schema_version
 from home_atlas.security import HomeAtlasError, UnauthorizedError, resolve_actor_id
 
 
@@ -22,8 +22,8 @@ class ActionRequest(BaseModel):
 def build_rest_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     engine = create_db_engine(settings)
-    create_tables(engine)
     with session_scope(engine) as session:
+        require_schema_version(session)
         seed_people_from_tokens(session, settings.token_map, settings.admins)
 
     app = FastAPI(title="HomeAtlas REST API")
@@ -32,10 +32,11 @@ def build_rest_app(settings: Settings | None = None) -> FastAPI:
     def _make_list_handler(ot: ObjectTypeDef):
         def handler(query: str | None = Query(None), actor_id: int = Depends(_actor_id)) -> list[dict[str, Any]]:
             with session_scope(engine) as session:
-                return actions.search_items(
+                return dispatch_function(
                     session,
-                    query=query,
-                    kind=ot.item_kind,
+                    actor_id,
+                    "search_items",
+                    {"query": query, "kind": ot.item_kind},
                 )
         handler.__name__ = f"list_{ot.api_name}"
         handler.__doc__ = f"List all {ot.api_name} items."
@@ -67,6 +68,8 @@ def build_rest_app(settings: Settings | None = None) -> FastAPI:
         return handler
 
     for ot in registry.object_types.values():
+        if ot.item_kind is None and ot.api_name != "Item":
+            continue
         app.add_api_route(
             f"/api/objects/{ot.api_name}",
             _make_list_handler(ot),

@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
+from home_atlas.cli import init_db
 from home_atlas.config import Settings
 from home_atlas.db import create_db_engine, session_scope
 from home_atlas.models import Event, Person
@@ -19,6 +20,7 @@ def _build_test_app(tmp_path: Path) -> tuple[TestClient, int]:
         token_map={"test-token": "你", "spouse-token": "配偶"},
         admins="你",
     )
+    init_db(settings)
     app = build_rest_app(settings)
     client = TestClient(app)
     engine = create_db_engine(settings)
@@ -49,6 +51,15 @@ def test_rest_list_objects_by_type(tmp_path: Path) -> None:
     items = response.json()
     names = [i["name"] for i in items]
     assert "测试食品" in names
+
+
+def test_rest_non_item_object_types_are_not_registered_as_item_lists(tmp_path: Path) -> None:
+    client, _ = _build_test_app(tmp_path)
+    headers = {"Authorization": "Bearer test-token"}
+
+    assert client.get("/api/objects/Person", headers=headers).status_code == 404
+    assert client.get("/api/objects/Location", headers=headers).status_code == 404
+    assert client.get("/api/objects/Event", headers=headers).status_code == 404
 
 
 def test_rest_invoke_action(tmp_path: Path) -> None:

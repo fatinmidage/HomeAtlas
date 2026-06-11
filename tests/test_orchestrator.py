@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from starlette.testclient import TestClient
 from sqlmodel import Session
 
 from home_atlas.agents import build_agents, should_use_ai
+from home_atlas.cli import init_db
 from home_atlas.config import Settings
 from home_atlas.actions import recent_activity
 from home_atlas.mcp_server import HomeAtlasTokenVerifier, build_fastmcp
@@ -46,15 +48,19 @@ def test_orchestrator_routes_whole_home_inventory_list(session: Session, actor_i
     assert {item["name"] for item in result["items"]} == {"护照", "螺丝刀"}
 
 
-def test_fastmcp_exposes_single_request_argument() -> None:
+def _migrated_settings(tmp_path: Path, filename: str) -> Settings:
+    settings = Settings(
+        _env_file=None,
+        database_url=f"sqlite:///{tmp_path / filename}",
+        token_map={"you-token": "你"},
+    )
+    init_db(settings)
+    return settings
+
+
+def test_fastmcp_exposes_single_request_argument(tmp_path: Path) -> None:
     async def list_tool_schema() -> dict:
-        mcp = build_fastmcp(
-            Settings(
-                _env_file=None,
-                database_url="sqlite:////private/tmp/home_atlas_test_mcp_schema.db",
-                token_map={"you-token": "你"},
-            )
-        )
+        mcp = build_fastmcp(_migrated_settings(tmp_path, "home_atlas_test_mcp_schema.db"))
         tools = await mcp.list_tools()
         assert len(tools) == 2
         tool_names = {t.name for t in tools}
@@ -67,14 +73,8 @@ def test_fastmcp_exposes_single_request_argument() -> None:
     assert set(schema["properties"]) == {"request"}
 
 
-def test_fastmcp_requires_bearer_auth_when_tokens_are_configured() -> None:
-    mcp = build_fastmcp(
-        Settings(
-            _env_file=None,
-            database_url="sqlite:////private/tmp/home_atlas_test_mcp_auth.db",
-            token_map={"you-token": "你"},
-        )
-    )
+def test_fastmcp_requires_bearer_auth_when_tokens_are_configured(tmp_path: Path) -> None:
+    mcp = build_fastmcp(_migrated_settings(tmp_path, "home_atlas_test_mcp_auth.db"))
     client = TestClient(mcp.streamable_http_app())
 
     response = client.post("/mcp", json={})
