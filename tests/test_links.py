@@ -120,3 +120,35 @@ def test_auto_traverse_same_type_returns_full_source_row(session: Session, actor
     assert len(results) == 1
     assert results[0]["id"] == item.id
     assert results[0]["name"] == "手电筒"
+
+
+def test_auto_traverse_masks_secret_item_properties(session: Session, actor_id: int) -> None:
+    item = actions.add_item(
+        session,
+        actor_id=actor_id,
+        name="家庭保单",
+        kind=ItemKind.INSURANCE_POLICY,
+        location_name="保险柜",
+        properties={"policy_number": "POL12345678", "provider": "测试保险"},
+    )
+
+    results = auto_traverse(session, "Item", item.id, "Item")
+
+    assert results[0]["properties"]["policy_number"] == "****5678"
+    assert results[0]["properties"]["provider"] == "测试保险"
+
+
+def test_traverse_events_masks_secret_snapshots(session: Session, actor_id: int) -> None:
+    item = actions.add_item(
+        session,
+        actor_id=actor_id,
+        name="会员卡",
+        kind=ItemKind.MEMBERSHIP_CARD,
+        location_name="钱包",
+        properties={"member_id": "MEM12345678", "issuer": "测试商户"},
+    )
+
+    results = auto_traverse(session, "Item", item.id, "Event")
+
+    assert results[0]["after"]["properties"]["member_id"] == "****5678"
+    assert results[0]["after"]["properties"]["issuer"] == "测试商户"

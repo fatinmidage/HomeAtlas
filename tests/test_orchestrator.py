@@ -6,11 +6,12 @@ from pathlib import Path
 from starlette.testclient import TestClient
 from sqlmodel import Session
 
-from home_atlas.agents import build_agents, should_use_ai
+from home_atlas.agents import _tool_result, build_agents, should_use_ai
 from home_atlas.cli import init_db
 from home_atlas.config import Settings
 from home_atlas.actions import recent_activity
 from home_atlas.mcp_server import HomeAtlasTokenVerifier, build_fastmcp
+from home_atlas.models import ItemKind
 from home_atlas.orchestrator import home_atlas, route_request
 from home_atlas.toolsets import all_toolsets, assert_tool_isolation
 
@@ -168,6 +169,24 @@ def test_generated_ai_add_item_schema_matches_action_parameter_definitions() -> 
     assert set(schema["properties"]) == {"name", "kind", "location_name", "quantity", "unit"}
     assert schema["required"] == ["name", "location_name"]
     assert schema["properties"]["kind"]["default"] == "food"
+
+
+def test_ai_tool_result_masks_secret_properties(session: Session, actor_id: int) -> None:
+    from home_atlas import actions
+
+    item = actions.add_item(
+        session,
+        actor_id=actor_id,
+        name="护照",
+        kind=ItemKind.DOCUMENT,
+        location_name="保险柜",
+        properties={"document_number": "E12345678", "issuing_authority": "测试机关"},
+    )
+
+    result = _tool_result(item)
+
+    assert result["properties"]["document_number"] == "****5678"
+    assert result["properties"]["issuing_authority"] == "测试机关"
 
 
 def test_generated_toolset_covers_registry_actions() -> None:

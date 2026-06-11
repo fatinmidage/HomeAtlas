@@ -321,6 +321,6 @@ def _tool_result(value: Any) -> Any:
         if hasattr(value, "location_id"):
             result["location_id"] = value.location_id
         if hasattr(value, "properties") and value.properties:
-            result["properties"] = value.properties
+            result["properties"] = actions._masked_properties(value)
         return result
     return value
