@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+from sqlalchemy import create_engine, text
+
 from home_atlas import cli
 from home_atlas.cli import dual_smoke, init_db, smoke
 from home_atlas.config import Settings
@@ -88,3 +90,22 @@ def test_alembic_upgrade_accepts_percent_encoded_database_url(monkeypatch) -> No
         "revision": "head",
         "url": "postgresql+psycopg://home_atlas:p%25ss@localhost/home_atlas",
     }
+
+
+def test_alembic_upgrade_runs_with_percent_in_sqlite_path(tmp_path) -> None:
+    db_dir = tmp_path / "p%ss"
+    db_dir.mkdir()
+    db_path = db_dir / "home_atlas.db"
+    settings = Settings(_env_file=None, database_url=f"sqlite:///{db_path}")
+
+    cli._run_alembic_upgrade(settings)
+
+    engine = create_engine(settings.database_url)
+    with engine.connect() as connection:
+        version = connection.execute(
+            text("select value from schema_metadata where key = 'ontology_schema_version'")
+        ).scalar_one()
+        alembic_version = connection.execute(text("select version_num from alembic_version")).scalar_one()
+    assert db_path.exists()
+    assert version == "2"
+    assert alembic_version == "0009_timezone_aware_timestamps"
