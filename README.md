@@ -220,7 +220,18 @@ launchctl bootout gui/$(id -u)/com.homeatlas.server
 
 ## Backups
 
-HomeAtlas wraps PostgreSQL's native backup tools. `pg_dump` and `pg_restore` must be installed on the home-server Mac and available on `PATH`.
+For the Docker Compose deployment, PostgreSQL is not exposed on the host. Run `pg_dump`
+inside the PostgreSQL container, then copy the dump file out:
+
+```bash
+mkdir -p backups
+docker exec homeatlas-postgres pg_dump -U home_atlas -d home_atlas -Fc -f /tmp/ha.dump
+docker cp homeatlas-postgres:/tmp/ha.dump ./backups/home_atlas-$(date +%Y%m%d-%H%M%S).dump
+```
+
+If you manage PostgreSQL directly on the home-server Mac, HomeAtlas also wraps PostgreSQL's
+native backup tools. In that mode, `pg_dump` and `pg_restore` must be installed on the host
+and available on `PATH`.
 
 ```bash
 uv run python -m home_atlas.cli backup-db --output backups/home_atlas-$(date +%Y%m%d-%H%M%S).dump

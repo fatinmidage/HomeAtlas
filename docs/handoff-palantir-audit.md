@@ -17,7 +17,7 @@
 | P1-1~5（masking / 治理入口 / 时区 / 确定性 / 过滤语义） | ✅ 已修复，已验证 |
 | 生产库收编（原 Commit 4） | ✅ 已完成，生产库已重建为 Alembic schema |
 | README 与部署文档 | ✅ 已更新，补充 init-db 硬顺序与 Docker Compose 部署 |
-| P2 备选项 | 🟡 部分完成（#12、#13 已修复；其余仍可选） |
+| P2 备选项 | 🟡 部分完成（#12/#13 已修复；其余仍可选） |
 
 ---
 
@@ -130,7 +130,7 @@ docker exec homeatlas-postgres psql -U home_atlas -d home_atlas \
 
 | # | 修复 | 验证 |
 |---|---|---|
-| P2-12 | `_run_alembic_upgrade` 对数据库 URL 中的 `%` 做 configparser 转义，避免密码含 `%` 时 `init-db` 崩溃 | `tests/test_cli.py::test_alembic_upgrade_accepts_percent_encoded_database_url` |
+| P2-12 | `_run_alembic_upgrade` 对数据库 URL 中的 `%` 做 configparser 转义，并修复 Alembic env.py 二次回写导致的 `%` 崩溃 | `tests/test_cli.py::test_alembic_upgrade_accepts_percent_encoded_database_url`；`tests/test_cli.py::test_alembic_upgrade_runs_with_percent_in_sqlite_path` |
 | P2-13 | `verify_readonly_isolation` 先执行 `SELECT 1` 验证只读连接；连接失败改为 `RuntimeError`，不再伪装成“写入已被拦截” | `tests/test_db_isolation.py::test_verify_raises_when_readonly_database_cannot_connect` |
 
 阶段验证：`uv run pytest -q` → **118 passed, 5 skipped**。
@@ -163,8 +163,8 @@ docker exec homeatlas-postgres psql -U home_atlas -d home_atlas \
 | 9 | MCP meta token 回退死代码 | mcp_server.py:96-97 | 客户端可控 meta 提供身份，违 on-behalf-of 精神；无调用方，删除即可 |
 | 10 | AI 模式静默缺管理动作 | ontology.py | UpdateItem/DiscardItem 无 ai_tools；要么提供带确认门的工具，要么在 instructions 言明 |
 | 11 | `Location.name` 全局唯一 | models.py | 记录在案，可接受 |
-| 12 | ✅ `_run_alembic_upgrade` 未转义 `%` | cli.py | 已修复：`Config.set_main_option` 前执行 `url.replace("%", "%%")` |
-| 13 | ✅ `verify_readonly_isolation` 把连接失败计为 blocked | db_isolation.py:41-48 | 已修复：先跑 `SELECT 1`，连接失败直接报配置错误 |
+| 12 | ✅ `_run_alembic_upgrade` / env.py `%` 链路 | cli.py + migrations/env.py | 第三轮发现 env.py 二次回写仍会炸；现已改为直接用 `database_url` 创建 engine，并补真实 SQLite `%` 路径迁移测试 |
+| 13 | ✅ `verify_readonly_isolation` 把连接失败计为 blocked | db_isolation.py:41-48 | 已修复：先跑 `SELECT 1`，连接失败直接报配置错误（复核确认 ✓） |
 | 14 | 🆕 集成测试临时库无前缀清理 | test_postgres_integration.py | 中途 kill 会留下 `home_atlas_test_*` 孤儿库；低危，知道即可 |
 
 ---
@@ -198,3 +198,82 @@ grep -rn "actions\.\(search_items\|list_expiring\|where_is\|last_touched\|recent
 docker exec homeatlas-postgres psql -U home_atlas -d home_atlas -c "..."
 # properties=json / eventaction 7 值 / 无 alembic_version / 无 schema_metadata → 待收编
 ```
+
+---
+
+## 7. 第三轮审计（2026-06-12，HEAD d9f57a7）
+
+> 范围：复核 3 个新 commit（6a21926 / 8aaa94e / d9f57a7）+ 首次通读 backup.py、llm_config.py、
+> migrations/env.py、deploy/hermes/、.env.example、仓库卫生（gitignore/dockerignore）。
+> 测试基线 **118 passed, 5 skipped**。生产收编以 §3 执行记录为准（未做独立复查，生产容器
+> 查询超出代码审计授权范围）。
+
+### 7-1 ✅ P2-12 已修复：`%` 密码场景 env.py 二次回写问题
+
+**证据**（实际执行，非推测）：模拟修复后全链——cli 转义写入 ✓ → env.py:19 `get_main_option`
+还原出含裸 `%` 的 URL → **env.py:20 `set_main_option` 原样回写 → configparser `before_set`
+直接抛 `ValueError: invalid interpolation syntax ... at position 33`**。
+即密码含 `%`（URL 编码 `%25`）时 `init-db` 依然崩溃。
+
+**为什么测试没拦住**：`test_alembic_upgrade_accepts_percent_encoded_database_url` 把
+`command.upgrade` mock 掉了，env.py 从未执行——只验证了"cli 写入后能读回"，
+没验证 alembic 真实链路。这是本项目已两次出现的复发模式的变体：**修了，但测试没踩真路径**。
+
+**修法**（根治在 env.py，二选一，推荐 ①）：
+
+```python
+# ① migrations/env.py — run_migrations_online 绕开 configparser 第二次插值，
+#    直接用已还原的 database_url 建 engine；env.py:20 的回写行删除
+def run_migrations_online() -> None:
+    from sqlalchemy import create_engine
+    connectable = create_engine(database_url, poolclass=pool.NullPool)
+    ...
+
+# ② 或保留 engine_from_config，回写时转义：
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+```
+
+**配套测试**（真实链路，不 mock）：用含 `%25` 的 SQLite URL（如 tmp 目录名含 `p%ss`）
+真跑 `_run_alembic_upgrade`，断言迁移成功且库文件落地。
+当前生产密码不含 `%` 时无现实影响，故列 P2 不阻塞；本轮已补真实链路测试防回归。
+
+**本轮处理（2026-06-12）**：`migrations/env.py` 删除 `config.set_main_option` 二次回写，
+在线迁移改为 `create_engine(database_url, poolclass=pool.NullPool)`；新增真实链路测试
+`tests/test_cli.py::test_alembic_upgrade_runs_with_percent_in_sqlite_path`。阶段验证：
+`uv run pytest -q` → **119 passed, 5 skipped**。
+
+### 7-2 ✅ README「Backups」节与 compose 部署不符（已修复）
+
+原 README 仍指导宿主上 `uv run python -m home_atlas.cli backup-db`——compose 的 postgres
+**无宿主端口映射**，此命令在唯一的真实部署形态下连不上库（§3 收编时实际用的是
+`docker exec homeatlas-postgres pg_dump`）。本轮已在 Backups 节补 compose 形态：
+
+```bash
+docker exec homeatlas-postgres pg_dump -U home_atlas -d home_atlas -Fc -f /tmp/ha.dump
+docker cp homeatlas-postgres:/tmp/ha.dump ./backups/home_atlas-$(date +%Y%m%d-%H%M%S).dump
+```
+
+### 7-3 ✅ 仓库卫生两处小漏（已修复）
+
+| 文件 | 原问题 | 本轮修复 |
+|---|---|---|
+| .gitignore | 只忽略 `backups/*.dump`，`backups/pre-reonboard-*-items.tsv`（家庭物品抄录）会被 `git add .` 带入仓库 | 已替换为 `backups/` |
+| .dockerignore | 未排除 `home_atlas.db`、`logs/`，`COPY . .` 会把本地开发 SQLite 库与日志打进生产镜像 | 已追加 `home_atlas.db`、`logs/` |
+
+### 7-4 ✅ 本轮复核通过的项
+
+| 项 | 结论 |
+|---|---|
+| P2-13（db_isolation 预检） | 修复正确：`SELECT 1` 失败 → `RuntimeError`，测试覆盖合理 ✓ |
+| README init-db 硬顺序 + Docker Compose 章节 + launchd 补步 | 内容准确，与代码行为一致 ✓ |
+| docker-compose 补 `HOME_ATLAS_ADMINS`（默认空） | 正确，init-db/seed 能读到管理员 ✓ |
+| backup.py（首次通读） | 标识符引用、临时库 terminate+drop、`--clean --if-exists --no-owner` 均无问题 ✓ |
+| llm_config.py / deploy/hermes/SKILL.md / .env.example（首次通读） | 无硬编码密钥；SKILL.md 引导用户确认 token 而非绕过脱敏，方向正确 ✓ |
+| 测试基线 | 118 passed, 5 skipped ✓ |
+
+### 7-5 本轮待办汇总（已处理）
+
+1. ✅ 修 env.py 的 `%` 链路 + 真实链路测试（§7-1，commit `b5f91f7`）
+2. ✅ README Backups 节 compose 化（§7-2）
+3. ✅ .gitignore `backups/` 整目录 + .dockerignore 补两行（§7-3）
+4. 🟡 其余 P2（#1~#11、#14）维持可选

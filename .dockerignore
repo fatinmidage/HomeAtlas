@@ -6,3 +6,5 @@ __pycache__/
 *.egg-info/
 .env
 backups/
+home_atlas.db
+logs/
