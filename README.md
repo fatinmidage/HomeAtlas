@@ -25,10 +25,10 @@ HomeAtlas 是一个家庭物品库存服务，用于通过 Hermes MCP 管理家�
 ```bash
 uv sync
 cp .env.example .env
-uv run python -m home_atlas.cli init-db
+uv run python -m home_atlas.interfaces.cli init-db
 ```
 
-启动任何长驻入口前，都要先运行 `init-db`，包括 `home_atlas.mcp_server`、`home_atlas.http_server` 或生成的 REST app。HomeAtlas 不再在服务启动时自动建表；如果数据库 schema 缺失或比代码旧，它会快速失败并停止启动。
+启动任何长驻入口前，都要先运行 `init-db`，包括 `home_atlas.interfaces.mcp_server`、`home_atlas.interfaces.http_server` 或生成的 REST app。HomeAtlas 不再在服务启动时自动建表；如果数据库 schema 缺失或比代码旧，它会快速失败并停止启动。
 
 本地单元测试不需要 PostgreSQL 服务。测试会使用内存 SQLite 数据库，同时仍然覆盖同一套 SQLModel 表和 Action 层。
 
@@ -48,10 +48,10 @@ uv run pytest
 
 ```bash
 cp .env.example .env
-uv run python -m home_atlas.cli doctor
-uv run python -m home_atlas.cli init-db
-uv run python -m home_atlas.cli smoke --token replace-with-token-1
-uv run python -m home_atlas.cli dual-smoke --writer-token replace-with-token-1 --reader-token replace-with-token-2
+uv run python -m home_atlas.interfaces.cli doctor
+uv run python -m home_atlas.interfaces.cli init-db
+uv run python -m home_atlas.interfaces.cli smoke --token replace-with-token-1
+uv run python -m home_atlas.interfaces.cli dual-smoke --writer-token replace-with-token-1 --reader-token replace-with-token-2
 ```
 
 预期冒烟测试结果中会包含：
@@ -63,7 +63,7 @@ uv run python -m home_atlas.cli dual-smoke --writer-token replace-with-token-1 -
 如果你在 Docker 外自行管理 PostgreSQL，请先创建数据库，设置 `HOME_ATLAS_DATABASE_URL`，然后运行：
 
 ```bash
-uv run python -m home_atlas.cli init-db
+uv run python -m home_atlas.interfaces.cli init-db
 ```
 
 连接字符串示例：
@@ -79,9 +79,9 @@ export HOME_ATLAS_DATABASE_URL='postgresql+psycopg://home_atlas:<password>@local
 export HOME_ATLAS_TOKEN_MAP='{"replace-with-token-1":"你","replace-with-token-2":"配偶"}'
 export HOME_ATLAS_ADMINS='你'
 
-uv run python -m home_atlas.cli doctor
-uv run python -m home_atlas.cli init-db --create-database
-uv run python -m home_atlas.cli smoke --token replace-with-token-1
+uv run python -m home_atlas.interfaces.cli doctor
+uv run python -m home_atlas.interfaces.cli init-db --create-database
+uv run python -m home_atlas.interfaces.cli smoke --token replace-with-token-1
 ```
 
 如果数据库角色已经存在，但数据库本身还不存在，`--create-database` 会通过名为 `postgres` 的维护数据库创建配置里的目标数据库。如果你的本地 Postgres 使用 macOS 用户名作为角色，请相应修改 URL，例如：
@@ -113,8 +113,8 @@ mcp_servers:
 运行带 Bearer 认证的 FastMCP streamable HTTP server：
 
 ```bash
-uv run python -m home_atlas.cli init-db
-uv run python -m home_atlas.mcp_server
+uv run python -m home_atlas.interfaces.cli init-db
+uv run python -m home_atlas.interfaces.mcp_server
 ```
 
 Hermes 会向 `/mcp` 发送 `Authorization: Bearer <token>`。FastMCP 会在工具运行前校验 Bearer token，然后 `home_atlas(request)` 在服务端解析操作者。
@@ -124,7 +124,7 @@ Hermes 会向 `/mcp` 发送 `Authorization: Bearer <token>`。FastMCP 会在工�
 在两台真实 Hermes 客户端接入前，可以用下面的命令在本地验证同一套操作者模型：token A 写入，token B 读取，数据库审计事件必须显示 token A 对应的操作者。
 
 ```bash
-uv run python -m home_atlas.cli dual-smoke \
+uv run python -m home_atlas.interfaces.cli dual-smoke \
   --writer-token replace-with-token-1 \
   --reader-token replace-with-token-2 \
   --item 双端烟测护照 \
@@ -177,19 +177,19 @@ HOME_ATLAS_AGENT_MODE=rules
 ```bash
 docker compose up -d postgres
 docker compose build home_atlas
-docker compose run --rm home_atlas python -m home_atlas.cli init-db
+docker compose run --rm home_atlas python -m home_atlas.interfaces.cli init-db
 docker compose up -d home_atlas
 docker logs homeatlas-service --tail 20
 ```
 
-拉取包含新迁移的代码后，也要执行同样的 `compose run --rm home_atlas python -m home_atlas.cli init-db` 步骤。如果已有部署是由旧的 `create_all` 快照创建的，请在启动新服务前迁移或重建数据库；否则 schema 闸门会有意阻止服务启动。
+拉取包含新迁移的代码后，也要执行同样的 `compose run --rm home_atlas python -m home_atlas.interfaces.cli init-db` 步骤。如果已有部署是由旧的 `create_all` 快照创建的，请在启动新服务前迁移或重建数据库；否则 schema 闸门会有意阻止服务启动。
 
 ### launchd
 
 launchd 模板位于 `deploy/launchd/com.homeatlas.server.plist`。它运行：
 
 ```bash
-/path/to/HomeAtlas/.venv/bin/python -m home_atlas.mcp_server
+/path/to/HomeAtlas/.venv/bin/python -m home_atlas.interfaces.mcp_server
 ```
 
 同时设置 `WorkingDirectory=/path/to/HomeAtlas`，所以服务会读取真实本地项目里的 `.env`。
@@ -198,7 +198,7 @@ launchd 模板位于 `deploy/launchd/com.homeatlas.server.plist`。它运行：
 
 ```bash
 mkdir -p logs
-uv run python -m home_atlas.cli init-db
+uv run python -m home_atlas.interfaces.cli init-db
 cp deploy/launchd/com.homeatlas.server.plist ~/Library/LaunchAgents/com.homeatlas.server.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.homeatlas.server.plist
 launchctl kickstart -k gui/$(id -u)/com.homeatlas.server
@@ -224,8 +224,8 @@ docker cp homeatlas-postgres:/tmp/ha.dump ./backups/home_atlas-$(date +%Y%m%d-%H
 如果你直接在家庭服务器 Mac 上管理 PostgreSQL，HomeAtlas 也封装了 PostgreSQL 原生备份工具。在这种模式下，宿主机必须安装 `pg_dump` 和 `pg_restore`，并且它们要在 `PATH` 中可用。
 
 ```bash
-uv run python -m home_atlas.cli backup-db --output backups/home_atlas-$(date +%Y%m%d-%H%M%S).dump
-uv run python -m home_atlas.cli verify-backup backups/<backup-file>.dump
+uv run python -m home_atlas.interfaces.cli backup-db --output backups/home_atlas-$(date +%Y%m%d-%H%M%S).dump
+uv run python -m home_atlas.interfaces.cli verify-backup backups/<backup-file>.dump
 ```
 
 `verify-backup` 会创建一个临时 PostgreSQL 数据库，把 dump 恢复进去，检查 `item` 和 `event` 数量，然后删除这个临时数据库。
@@ -254,8 +254,8 @@ HOME_ATLAS_INTEGRATION_DATABASE_URL='postgresql+psycopg://home_atlas:<password>@
 这个标准库 runner 刻意保持很小，适合在接入完整 MCP 部署前使用。它使用和 CLI 相同的 `HOME_ATLAS_DATABASE_URL` 和 token map：
 
 ```bash
-uv run python -m home_atlas.cli init-db
-uv run python -m home_atlas.http_server
+uv run python -m home_atlas.interfaces.cli init-db
+uv run python -m home_atlas.interfaces.http_server
 ```
 
 然后调用：
@@ -269,7 +269,7 @@ curl -X POST http://localhost:8080/mcp \
 
 ## 模块布局
 
-`home_atlas` 现在按职责分层；顶层同名模块保留为兼容入口，旧 import 和旧 `python -m` 命令仍可用。
+`home_atlas` 现在按职责分层；包根目录只保留 `__init__.py`，真实实现都放在下面这些职责目录里。
 
 | 目录 | 职责 |
 | --- | --- |

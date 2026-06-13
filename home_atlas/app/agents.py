@@ -9,7 +9,7 @@ from typing import Any
 from pydantic_ai import Agent, FunctionToolset, RunContext
 from sqlmodel import Session
 
-from home_atlas import actions
+from home_atlas.app import actions
 from home_atlas.core.config import Settings
 from home_atlas.app.dispatcher import dispatch_action, dispatch_function
 from home_atlas.domain.links import auto_traverse

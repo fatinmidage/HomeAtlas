@@ -5,11 +5,11 @@ import inspect
 import pytest
 from sqlmodel import Session
 
-from home_atlas.actions import add_item
-from home_atlas.dispatcher import dispatch_action, dispatch_function
-from home_atlas.models import ItemKind, Person
-from home_atlas.ontology import ActionParameterDef, FunctionDef, build_registry, get_registry
-from home_atlas.security import HomeAtlasError, UnauthorizedError
+from home_atlas.app.actions import add_item
+from home_atlas.app.dispatcher import dispatch_action, dispatch_function
+from home_atlas.domain.models import ItemKind, Person
+from home_atlas.domain.ontology import ActionParameterDef, FunctionDef, build_registry, get_registry
+from home_atlas.core.security import HomeAtlasError, UnauthorizedError
 
 
 def test_dispatcher_rejects_missing_unknown_and_wrong_type(session: Session, actor_id: int) -> None:

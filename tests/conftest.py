@@ -4,8 +4,8 @@ import pytest
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from home_atlas.models import Person
-from home_atlas.schema_migration import SchemaMetadata  # noqa: F401
+from home_atlas.domain.models import Person
+from home_atlas.infra.schema_migration import SchemaMetadata  # noqa: F401
 
 
 @pytest.fixture()

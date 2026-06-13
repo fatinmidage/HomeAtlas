@@ -5,7 +5,7 @@ from datetime import date, timedelta
 import pytest
 from sqlmodel import Session, select
 
-from home_atlas.actions import (
+from home_atlas.app.actions import (
     add_item,
     adjust_quantity,
     discard_item,
@@ -19,8 +19,8 @@ from home_atlas.actions import (
     upsert_card_reference,
     where_is,
 )
-from home_atlas.models import Event, EventAction, ItemKind
-from home_atlas.security import HomeAtlasError, UnauthorizedError, resolve_actor_id
+from home_atlas.domain.models import Event, EventAction, ItemKind
+from home_atlas.core.security import HomeAtlasError, UnauthorizedError, resolve_actor_id
 
 
 def test_add_move_and_audit_actor(session: Session, actor_id: int) -> None:
@@ -273,7 +273,7 @@ def test_recent_activity_masks_secret_snapshot_properties(session: Session, acto
 
 
 def test_event_version_increments_per_item(session: Session, actor_id: int) -> None:
-    from home_atlas.models import Event
+    from home_atlas.domain.models import Event
 
     item = add_item(session, actor_id=actor_id, name="牛奶", kind=ItemKind.FOOD, location_name="冰箱")
     move_item(session, actor_id=actor_id, item_id=item.id, location_name="厨房")

@@ -5,9 +5,9 @@ from typing import Any
 import pytest
 from sqlmodel import Session
 
-from home_atlas.actions import add_item, move_item
-from home_atlas.event_bus import get_event_bus
-from home_atlas.models import EventAction, ItemKind
+from home_atlas.app.actions import add_item, move_item
+from home_atlas.infra.event_bus import get_event_bus
+from home_atlas.domain.models import EventAction, ItemKind
 
 
 def test_event_bus_dispatches_to_subscriber(session: Session, actor_id: int) -> None:

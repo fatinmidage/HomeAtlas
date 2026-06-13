@@ -45,7 +45,7 @@ def require_schema_version(session: Session) -> None:
     if not result["match"]:
         raise RuntimeError(
             "HomeAtlas database schema is not initialized or is out of date. "
-            "Run `python -m home_atlas.cli init-db` before starting the service."
+            "Run `python -m home_atlas.interfaces.cli init-db` before starting the service."
         )
 
 

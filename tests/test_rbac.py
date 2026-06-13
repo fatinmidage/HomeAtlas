@@ -3,10 +3,10 @@ from __future__ import annotations
 import pytest
 from sqlmodel import Session, select
 
-from home_atlas.actions import add_item, discard_item, set_person_role, update_item
-from home_atlas.models import Event, EventAction, ItemKind, Person
-from home_atlas.ontology import build_registry
-from home_atlas.security import UnauthorizedError
+from home_atlas.app.actions import add_item, discard_item, set_person_role, update_item
+from home_atlas.domain.models import Event, EventAction, ItemKind, Person
+from home_atlas.domain.ontology import build_registry
+from home_atlas.core.security import UnauthorizedError
 
 
 def _create_person(session: Session, name: str, roles: list[str]) -> int:

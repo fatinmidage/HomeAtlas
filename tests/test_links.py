@@ -3,11 +3,11 @@ from __future__ import annotations
 import pytest
 from sqlmodel import Session
 
-from home_atlas import actions
-from home_atlas.links import auto_traverse, traverse_chain, traverse_link
-from home_atlas.models import ItemKind, Location
-from home_atlas.ontology import build_registry
-from home_atlas.security import HomeAtlasError
+from home_atlas.app import actions
+from home_atlas.domain.links import auto_traverse, traverse_chain, traverse_link
+from home_atlas.domain.models import ItemKind, Location
+from home_atlas.domain.ontology import build_registry
+from home_atlas.core.security import HomeAtlasError
 
 
 def test_stored_at_returns_location(session: Session, actor_id: int) -> None:

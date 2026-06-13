@@ -10,4 +10,4 @@ RUN pip install --no-cache-dir .
 
 EXPOSE 8080
 
-CMD ["python", "-m", "home_atlas.mcp_server"]
+CMD ["python", "-m", "home_atlas.interfaces.mcp_server"]

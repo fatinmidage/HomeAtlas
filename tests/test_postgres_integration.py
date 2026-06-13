@@ -9,12 +9,12 @@ import pytest
 from sqlalchemy.engine import make_url
 from sqlmodel import select
 
-from home_atlas.actions import add_item, move_item, search_items, set_person_role
-from home_atlas.cli import init_db
-from home_atlas.config import Settings
-from home_atlas.db import create_db_engine, create_tables, seed_people_from_tokens, session_scope
-from home_atlas.models import Event, Item, ItemKind, Person
-from home_atlas.security import HomeAtlasError, resolve_actor_id
+from home_atlas.app.actions import add_item, move_item, search_items, set_person_role
+from home_atlas.interfaces.cli import init_db
+from home_atlas.core.config import Settings
+from home_atlas.infra.db import create_db_engine, create_tables, seed_people_from_tokens, session_scope
+from home_atlas.domain.models import Event, Item, ItemKind, Person
+from home_atlas.core.security import HomeAtlasError, resolve_actor_id
 
 
 def _temporary_database_url(base_url: str) -> str:

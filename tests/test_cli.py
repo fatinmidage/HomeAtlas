@@ -4,10 +4,10 @@ import json
 
 from sqlalchemy import create_engine, text
 
-from home_atlas import cli
-from home_atlas.cli import dual_smoke, init_db, smoke
-from home_atlas.config import Settings
-from home_atlas.llm_config import normalize_model_name
+from home_atlas.interfaces import cli
+from home_atlas.interfaces.cli import dual_smoke, init_db, smoke
+from home_atlas.core.config import Settings
+from home_atlas.core.llm_config import normalize_model_name
 
 
 def test_smoke_runs_through_write_read_audit(tmp_path) -> None:

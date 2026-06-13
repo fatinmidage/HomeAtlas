@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from home_atlas.backup import backup_database, postgresql_cli_url
-from home_atlas.config import Settings
+from home_atlas.infra.backup import backup_database, postgresql_cli_url
+from home_atlas.core.config import Settings
 
 
 def test_postgresql_cli_url_strips_sqlalchemy_driver() -> None:

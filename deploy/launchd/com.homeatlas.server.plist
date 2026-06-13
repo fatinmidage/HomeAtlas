@@ -10,7 +10,7 @@
   <array>
     <string>/path/to/HomeAtlas/.venv/bin/python</string>
     <string>-m</string>
-    <string>home_atlas.mcp_server</string>
+    <string>home_atlas.interfaces.mcp_server</string>
   </array>
 
   <key>WorkingDirectory</key>

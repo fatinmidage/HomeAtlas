@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from home_atlas.models import Event, EventAction, Item, ItemDomain, ItemKind, Location, Person, domain_for_kind
-from home_atlas.ontology import LinkTypeDef, OntologyRegistry, build_registry, get_registry
-from home_atlas.schema_migration import CURRENT_SCHEMA_VERSION
-from home_atlas.security import HomeAtlasError
+from home_atlas.domain.models import Event, EventAction, Item, ItemDomain, ItemKind, Location, Person, domain_for_kind
+from home_atlas.domain.ontology import LinkTypeDef, OntologyRegistry, build_registry, get_registry
+from home_atlas.infra.schema_migration import CURRENT_SCHEMA_VERSION
+from home_atlas.core.security import HomeAtlasError
 
 
 @pytest.fixture()

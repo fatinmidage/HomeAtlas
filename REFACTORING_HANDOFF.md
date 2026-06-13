@@ -8,11 +8,11 @@
 
 | 观察项 | 当前状态 | 判断 |
 | --- | --- | --- |
-| 包结构 | `home_atlas/` 下所有代码文件平铺 | 可读性开始下降，但还没到必须一次性大搬家的程度 |
+| 包结构 | `home_atlas/` 已按职责分层 | 包根目录不再保留内部兼容 wrapper |
 | 代码规模 | 约 22 个 `.py` 文件，总计约 3500 行 | 可以分阶段整理 |
 | 偏大的文件 | `ontology.py` 约 747 行，`actions.py` 约 579 行 | 优先成为边界整理对象 |
-| 外部引用 | 测试、README、入口命令大量引用 `home_atlas.actions`、`home_atlas.models` 等旧路径 | 直接搬目录风险中等 |
-| 推荐策略 | 先定义职责边界，再小步迁移 | 避免一次性改动过大 |
+| 外部引用 | 测试、README、入口命令已改用新路径 | 结构含义更直接 |
+| 推荐策略 | 最终结构不保留内部兼容层 | 避免重复文件增加理解成本 |
 
 ## 总成功目标
 
@@ -20,9 +20,9 @@
 
 1. `home_atlas` 代码按职责归类，阅读入口更清楚。
 2. 现有公开入口保持可用，包括：
-   - `python -m home_atlas.cli ...`
-   - `python -m home_atlas.mcp_server`
-   - `python -m home_atlas.http_server`
+   - `python -m home_atlas.interfaces.cli ...`
+   - `python -m home_atlas.interfaces.mcp_server`
+   - `python -m home_atlas.interfaces.http_server`
    - `from home_atlas import add_item, home_atlas`
 3. 测试全部通过。
 4. README 中的命令和代码路径不误导后续维护者。
@@ -87,16 +87,16 @@ home_atlas/
 | 验证 | 用户明确批准执行 |
 | commit | 不提交 |
 
-## 阶段 1：建立包目录与兼容层
+## 阶段 1：建立包目录与过渡兼容层
 
 | 项 | 内容 |
 | --- | --- |
 | 目标 | 创建新目录结构，但尽量保持旧 import 路径可用 |
 | 主要动作 | 新建 `domain/`、`app/`、`infra/`、`interfaces/`、`core/` 目录和 `__init__.py` |
-| 迁移策略 | 每移动一个旧模块，就在旧路径保留薄兼容文件，例如 `home_atlas/actions.py` 继续 re-export `home_atlas.app.actions` |
-| 成功标准 | 旧路径和新路径都能导入 |
+| 迁移策略 | 每移动一个旧模块，过渡期先在旧路径保留薄兼容文件，例如 `home_atlas/actions.py` re-export `home_atlas.app.actions` |
+| 成功标准 | 迁移期旧路径和新路径都能导入 |
 | 验证命令 | `uv run pytest` |
-| 额外验证 | `uv run python -m home_atlas.cli doctor` |
+| 额外验证 | `uv run python -m home_atlas.interfaces.cli doctor` |
 | commit 时机 | 所有验证通过后 |
 | 建议 commit 信息 | `refactor: add package structure with compatibility imports` |
 
@@ -143,12 +143,12 @@ home_atlas/
 
 | 项 | 内容 |
 | --- | --- |
-| 目标 | 把 CLI、MCP、HTTP、REST 入口移动到 `interfaces/`，同时保持 `python -m home_atlas.cli` 等旧入口可用 |
+| 目标 | 把 CLI、MCP、HTTP、REST 入口移动到 `interfaces/`，并把文档/部署命令切换到新路径 |
 | 建议范围 | `cli.py`、`mcp_server.py`、`http_server.py`、`rest_api.py` |
-| 成功标准 | 老命令不坏，新路径也可被内部代码引用 |
+| 成功标准 | 新入口命令可用，新路径可被内部代码引用 |
 | 重点检查 | Dockerfile、launchd plist、README 命令示例 |
 | 验证命令 | `uv run pytest tests/test_cli.py tests/test_rest_api.py tests/test_orchestrator.py` |
-| 入口验证 | `uv run python -m home_atlas.cli doctor` |
+| 入口验证 | `uv run python -m home_atlas.interfaces.cli doctor` |
 | 全量验证 | `uv run pytest` |
 | commit 时机 | 所有验证通过后 |
 | 建议 commit 信息 | `refactor: move interface modules while preserving entrypoints` |
@@ -159,7 +159,7 @@ home_atlas/
 | --- | --- |
 | 目标 | 让 README 和计划文档准确反映新结构，并迁移剩余 domain 模块 |
 | 建议范围 | `ontology.py`、`links.py`、`README.md`、本文件 |
-| 保留兼容层 | 若外部入口仍依赖旧路径，先保留；不要急着删除 |
+| 保留兼容层 | 最终不保留内部兼容层；确认引用清零后删除 |
 | 可删除内容 | 只删除本次迁移产生的无用 import、重复说明或临时兼容说明 |
 | 禁止内容 | 不删除历史上已有但与本次无关的死代码 |
 | 验证命令 | `uv run pytest` |
@@ -187,12 +187,13 @@ home_atlas/
 | 阶段 | 状态 | 备注 |
 | --- | --- | --- |
 | 阶段 0：批准前准备 | 已完成 | 用户已批准开始执行 |
-| 阶段 1：建立包目录与兼容层 | 已完成 | 已创建目标包目录；验证通过并提交 |
+| 阶段 1：建立包目录与过渡兼容层 | 已完成 | 已创建目标包目录；验证通过并提交 |
 | 阶段 2：迁移低风险基础模块 | 已完成 | core/domain 基础模块已迁移；验证通过并提交 |
 | 阶段 3：迁移基础设施模块 | 已完成 | infra 模块已迁移；验证通过并提交 |
 | 阶段 4：迁移业务应用模块 | 已完成 | app 模块已迁移；验证通过并提交 |
-| 阶段 5：迁移接口入口模块 | 已完成 | interfaces 模块已迁移；旧入口验证通过并提交 |
+| 阶段 5：迁移接口入口模块 | 已完成 | interfaces 模块已迁移；新入口验证通过并提交 |
 | 阶段 6：文档同步与最终清理 | 已完成 | 剩余 domain 模块和文档已同步；验证通过并提交 |
+| 阶段 7：删除内部兼容层 | 已完成 | 已删除顶层 wrapper；验证通过并提交 |
 
 ## 回滚原则
 
@@ -206,7 +207,7 @@ home_atlas/
 ## 给后续执行者的提醒
 
 1. 这是结构重构，不是功能开发。
-2. 兼容层很重要，先保证旧入口不坏。
+2. 兼容层只适合迁移期；最终结构应删除内部 wrapper。
 3. 变更越小越好，每个 commit 只做一个阶段。
 4. 如果某阶段 import 改动过大，应停止并重新拆小阶段。
 5. 用户批准前不要开始阶段 1。

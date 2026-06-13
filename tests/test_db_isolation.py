@@ -4,9 +4,9 @@ import os
 
 import pytest
 
-from home_atlas.config import Settings
-import home_atlas.db_isolation as db_isolation
-from home_atlas.db_isolation import verify_readonly_isolation
+from home_atlas.core.config import Settings
+import home_atlas.infra.db_isolation as db_isolation
+from home_atlas.infra.db_isolation import verify_readonly_isolation
 
 
 def test_verify_skipped_when_no_readonly_url():

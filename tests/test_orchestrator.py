@@ -6,14 +6,14 @@ from pathlib import Path
 from starlette.testclient import TestClient
 from sqlmodel import Session
 
-from home_atlas.agents import _tool_result, build_agents, should_use_ai
-from home_atlas.cli import init_db
-from home_atlas.config import Settings
-from home_atlas.actions import recent_activity
-from home_atlas.mcp_server import HomeAtlasTokenVerifier, build_fastmcp
-from home_atlas.models import ItemKind
-from home_atlas.orchestrator import home_atlas, route_request
-from home_atlas.toolsets import all_toolsets, assert_tool_isolation
+from home_atlas.app.agents import _tool_result, build_agents, should_use_ai
+from home_atlas.interfaces.cli import init_db
+from home_atlas.core.config import Settings
+from home_atlas.app.actions import recent_activity
+from home_atlas.interfaces.mcp_server import HomeAtlasTokenVerifier, build_fastmcp
+from home_atlas.domain.models import ItemKind
+from home_atlas.app.orchestrator import home_atlas, route_request
+from home_atlas.app.toolsets import all_toolsets, assert_tool_isolation
 
 
 def test_domain_toolsets_are_prefix_isolated() -> None:
@@ -112,8 +112,8 @@ def test_pydantic_ai_agents_construct_without_api_key(monkeypatch) -> None:
 
 
 def test_generated_ai_toolsets_keep_existing_tool_names() -> None:
-    from home_atlas.agents import _build_ai_toolset_for_domain
-    from home_atlas.models import ItemDomain
+    from home_atlas.app.agents import _build_ai_toolset_for_domain
+    from home_atlas.domain.models import ItemDomain
 
     expected = {
         ItemDomain.PERISHABLE: {"perishable_add_item", "perishable_search", "perishable_list_expiring"},
@@ -126,9 +126,9 @@ def test_generated_ai_toolsets_keep_existing_tool_names() -> None:
 
 
 def test_generated_ai_toolset_detects_registry_action_without_agent_changes(monkeypatch) -> None:
-    from home_atlas.agents import _build_ai_toolset_for_domain, build_agents
-    from home_atlas.models import EventAction, ItemDomain, ItemKind
-    from home_atlas.ontology import AIToolDef, ActionParameterDef, ActionTypeDef, get_registry
+    from home_atlas.app.agents import _build_ai_toolset_for_domain, build_agents
+    from home_atlas.domain.models import EventAction, ItemDomain, ItemKind
+    from home_atlas.domain.ontology import AIToolDef, ActionParameterDef, ActionTypeDef, get_registry
 
     build_agents.cache_clear()
     registry = get_registry()
@@ -160,8 +160,8 @@ def _ping_item(session: Session, *, actor_id: int, item_id: int) -> dict[str, in
 
 
 def test_generated_ai_add_item_schema_matches_action_parameter_definitions() -> None:
-    from home_atlas.agents import _build_ai_toolset_for_domain
-    from home_atlas.models import ItemDomain
+    from home_atlas.app.agents import _build_ai_toolset_for_domain
+    from home_atlas.domain.models import ItemDomain
 
     tool = _build_ai_toolset_for_domain(ItemDomain.PERISHABLE).tools["perishable_add_item"]
     schema = tool.function_schema.json_schema
@@ -172,7 +172,7 @@ def test_generated_ai_add_item_schema_matches_action_parameter_definitions() -> 
 
 
 def test_ai_tool_result_masks_secret_properties(session: Session, actor_id: int) -> None:
-    from home_atlas import actions
+    from home_atlas.app import actions
 
     item = actions.add_item(
         session,
@@ -190,9 +190,9 @@ def test_ai_tool_result_masks_secret_properties(session: Session, actor_id: int)
 
 
 def test_generated_toolset_covers_registry_actions() -> None:
-    from home_atlas.models import ItemDomain
-    from home_atlas.ontology import get_registry
-    from home_atlas.toolsets import toolset_for_domain, _ACTION_TOOL_SUFFIX, _DOMAIN_PREFIX
+    from home_atlas.domain.models import ItemDomain
+    from home_atlas.domain.ontology import get_registry
+    from home_atlas.app.toolsets import toolset_for_domain, _ACTION_TOOL_SUFFIX, _DOMAIN_PREFIX
 
     registry = get_registry()
     for domain in (ItemDomain.PERISHABLE, ItemDomain.CARDS_DOCS, ItemDomain.EQUIPMENT):
@@ -220,7 +220,7 @@ def test_agent_mode_rules_keeps_deterministic_orchestrator(session: Session, act
 
 
 def test_classify_domain_uses_registry_keywords() -> None:
-    from home_atlas.orchestrator import _classify_domain
+    from home_atlas.app.orchestrator import _classify_domain
 
     assert _classify_domain("牛奶") == "perishables"
     assert _classify_domain("螺丝刀") == "equipment"

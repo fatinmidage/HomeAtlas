@@ -4,9 +4,9 @@ from datetime import date
 
 import pytest
 
-from home_atlas.models import ItemKind
-from home_atlas.property_schemas import validate_item_properties
-from home_atlas.security import HomeAtlasError
+from home_atlas.domain.models import ItemKind
+from home_atlas.domain.property_schemas import validate_item_properties
+from home_atlas.core.security import HomeAtlasError
 
 
 def test_payment_card_extra_forbid() -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from sqlmodel import Session
 
-from home_atlas.schema_migration import (
+from home_atlas.infra.schema_migration import (
     CURRENT_SCHEMA_VERSION,
     SchemaMetadata,
     check_schema_version,

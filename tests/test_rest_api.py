@@ -5,12 +5,12 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
-from home_atlas.cli import init_db
-from home_atlas.config import Settings
-from home_atlas.db import create_db_engine, session_scope
-from home_atlas.models import Event, Person
-from home_atlas.ontology import get_registry
-from home_atlas.rest_api import build_rest_app
+from home_atlas.interfaces.cli import init_db
+from home_atlas.core.config import Settings
+from home_atlas.infra.db import create_db_engine, session_scope
+from home_atlas.domain.models import Event, Person
+from home_atlas.domain.ontology import get_registry
+from home_atlas.interfaces.rest_api import build_rest_app
 
 
 def _build_test_app(tmp_path: Path) -> tuple[TestClient, int]:
