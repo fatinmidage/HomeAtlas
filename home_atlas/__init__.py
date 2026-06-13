@@ -1,6 +1,6 @@
 """HomeAtlas domain package."""
 
-from home_atlas.actions import (
+from home_atlas.app.actions import (
     add_item,
     adjust_quantity,
     discard_item,
@@ -13,7 +13,7 @@ from home_atlas.actions import (
     upsert_card_reference,
     where_is,
 )
-from home_atlas.orchestrator import home_atlas
+from home_atlas.app.orchestrator import home_atlas
 
 __all__ = [
     "add_item",
@@ -29,4 +29,3 @@ __all__ = [
     "upsert_card_reference",
     "where_is",
 ]
-

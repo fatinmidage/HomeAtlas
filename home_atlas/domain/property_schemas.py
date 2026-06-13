@@ -24,7 +24,7 @@ class PaymentCardPropertiesBase(BaseModel):
 
 
 def _schema_for_kind(kind: ItemKind) -> type[BaseModel] | None:
-    from home_atlas.ontology import get_registry
+    from home_atlas.domain.ontology import get_registry
 
     ot = get_registry().object_type_for_kind(kind)
     if ot is None or not ot.typed_properties:

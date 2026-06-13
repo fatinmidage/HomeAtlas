@@ -8,7 +8,7 @@ from sqlmodel import Session
 
 from home_atlas.app.dispatcher import dispatch_action, dispatch_function
 from home_atlas.domain.models import ItemDomain, ItemKind
-from home_atlas.ontology import get_registry
+from home_atlas.domain.ontology import get_registry
 
 
 Tool = Callable[..., Any]

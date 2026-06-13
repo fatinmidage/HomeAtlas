@@ -12,7 +12,7 @@ from home_atlas.core.config import Settings, get_settings
 from home_atlas.core.security import HomeAtlasError, UnauthorizedError, resolve_actor_id
 from home_atlas.infra.db import create_db_engine, seed_people_from_tokens, session_scope
 from home_atlas.infra.schema_migration import require_schema_version
-from home_atlas.ontology import ObjectTypeDef, get_registry
+from home_atlas.domain.ontology import ObjectTypeDef, get_registry
 
 
 class ActionRequest(BaseModel):

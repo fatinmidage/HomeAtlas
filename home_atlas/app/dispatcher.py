@@ -6,7 +6,7 @@ from typing import Any, get_args, get_origin
 
 from sqlmodel import Session
 
-from home_atlas.ontology import ActionParameterDef, get_registry
+from home_atlas.domain.ontology import ActionParameterDef, get_registry
 from home_atlas.core.security import HomeAtlasError, check_action_permission, check_function_permission
 
 

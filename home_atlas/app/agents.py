@@ -12,10 +12,10 @@ from sqlmodel import Session
 from home_atlas import actions
 from home_atlas.core.config import Settings
 from home_atlas.app.dispatcher import dispatch_action, dispatch_function
-from home_atlas.links import auto_traverse
+from home_atlas.domain.links import auto_traverse
 from home_atlas.core.llm_config import export_provider_api_key, has_configured_api_key, normalize_model_name
 from home_atlas.domain.models import ItemDomain, ItemKind
-from home_atlas.ontology import AIToolDef, ActionParameterDef, ActionTypeDef, FunctionDef, OntologyRegistry, get_registry
+from home_atlas.domain.ontology import AIToolDef, ActionParameterDef, ActionTypeDef, FunctionDef, OntologyRegistry, get_registry
 from home_atlas.core.security import HomeAtlasError
 
 

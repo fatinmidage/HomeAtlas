@@ -26,7 +26,7 @@ from home_atlas.domain.models import (
     utc_now,
 )
 from home_atlas.infra.event_bus import enqueue_event
-from home_atlas.ontology import get_registry
+from home_atlas.domain.ontology import get_registry
 from home_atlas.domain.property_schemas import validate_item_properties
 from home_atlas.core.security import HomeAtlasError, check_action_permission, reject_payment_card_secrets, scan_sensitive_text
 

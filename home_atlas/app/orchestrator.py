@@ -12,7 +12,7 @@ from home_atlas.app.toolsets import cards_docs_toolset, equipment_toolset, peris
 from home_atlas.core.config import Settings
 from home_atlas.core.llm_config import ACTIVE_LLM, has_configured_api_key
 from home_atlas.domain.models import ItemDomain, ItemKind
-from home_atlas.ontology import get_registry
+from home_atlas.domain.ontology import get_registry
 
 
 @dataclass(frozen=True)

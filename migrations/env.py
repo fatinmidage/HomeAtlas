@@ -6,7 +6,7 @@ from alembic import context
 from sqlalchemy import create_engine, pool
 from sqlmodel import SQLModel
 
-from home_atlas.config import get_settings
+from home_atlas.core.config import get_settings
 from home_atlas import models  # noqa: F401
 
 config = context.config

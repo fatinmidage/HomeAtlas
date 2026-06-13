@@ -36,7 +36,7 @@ def resolve_actor_id(session: Session, token: str | None, token_map: dict[str, s
 
 
 def check_action_permission(session: Session, actor_id: int, action_name: str) -> None:
-    from home_atlas.ontology import get_registry
+    from home_atlas.domain.ontology import get_registry
     person = session.get(Person, actor_id)
     if person is None:
         raise UnauthorizedError("unknown actor")
@@ -47,7 +47,7 @@ def check_action_permission(session: Session, actor_id: int, action_name: str) -
 
 
 def check_function_permission(session: Session, actor_id: int, function_name: str) -> None:
-    from home_atlas.ontology import get_registry
+    from home_atlas.domain.ontology import get_registry
     person = session.get(Person, actor_id)
     if person is None:
         raise UnauthorizedError("unknown actor")

@@ -267,11 +267,23 @@ curl -X POST http://localhost:8080/mcp \
   -d '{"request":"把护照放进保险柜抽屉"}'
 ```
 
+## 模块布局
+
+`home_atlas` 现在按职责分层；顶层同名模块保留为兼容入口，旧 import 和旧 `python -m` 命令仍可用。
+
+| 目录 | 职责 |
+| --- | --- |
+| `home_atlas/domain/` | 数据模型、Ontology Registry、属性 schema、对象关系遍历 |
+| `home_atlas/app/` | 业务动作、dispatcher、自然语言路由、AI agent、工具集 |
+| `home_atlas/infra/` | 数据库、schema gate、事件 bus、备份、只读库隔离 |
+| `home_atlas/interfaces/` | CLI、MCP、HTTP runner、REST API |
+| `home_atlas/core/` | 配置、LLM 配置、安全和权限 |
+
 ## 设计流程
 
 输入会按下面流程流转：
 
-1. `home_atlas.orchestrator.home_atlas()` 对自然语言请求分类。
+1. `home_atlas.app.orchestrator.home_atlas()` 对自然语言请求分类。
 2. 被选中的领域工具调用由 Registry 驱动的 dispatcher。
 3. dispatcher 校验参数、RBAC、确认信息，并调用 Action。
 4. 每个 Action 负责校验、写入对象表、记录一个 `Event`；EventBus handlers 只会在 commit 成功后运行。

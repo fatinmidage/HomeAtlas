@@ -15,7 +15,7 @@ from home_atlas.core.security import UnauthorizedError, resolve_actor_id
 from home_atlas.infra.db import create_db_engine, seed_people_from_tokens, session_scope
 from home_atlas.infra.db_isolation import grant_select_on_new_tables, verify_readonly_isolation
 from home_atlas.infra.schema_migration import require_schema_version
-from home_atlas.ontology import get_registry
+from home_atlas.domain.ontology import get_registry
 
 
 class HomeAtlasTokenVerifier:
