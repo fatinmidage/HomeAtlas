@@ -28,7 +28,7 @@ def test_viewer_cannot_add_item(session: Session) -> None:
         )
 
 
-def test_member_can_add_but_not_discard(session: Session) -> None:
+def test_member_can_add_and_discard_but_not_update(session: Session) -> None:
     member_id = _create_person(session, "成员", ["member"])
 
     item = add_item(
@@ -37,8 +37,8 @@ def test_member_can_add_but_not_discard(session: Session) -> None:
     )
     assert item.id is not None
 
-    with pytest.raises(UnauthorizedError, match="lacks permission"):
-        discard_item(session, actor_id=member_id, item_id=item.id, confirm=True)
+    discarded = discard_item(session, actor_id=member_id, item_id=item.id, confirm=True)
+    assert discarded.archived is True
 
     with pytest.raises(UnauthorizedError, match="lacks permission"):
         update_item(session, actor_id=member_id, item_id=item.id, confirm=True, name="新名字")
@@ -77,5 +77,5 @@ def test_check_permission_role_hierarchy() -> None:
     assert registry.check_permission("AddItem", ["member"]) is True
     assert registry.check_permission("AddItem", ["viewer"]) is False
     assert registry.check_permission("DiscardItem", ["admin"]) is True
-    assert registry.check_permission("DiscardItem", ["member"]) is False
+    assert registry.check_permission("DiscardItem", ["member"]) is True
     assert registry.check_permission("DiscardItem", ["viewer"]) is False

@@ -226,7 +226,13 @@ def _make_action_tool(action: ActionTypeDef, tool_def: AIToolDef):
         params = {**tool_def.constants, **kwargs}
         if adapter is not None:
             params = adapter(**params)
-        item = dispatch_action(ctx.deps.session, ctx.deps.actor_id, action.api_name, params)
+        item = dispatch_action(
+            ctx.deps.session,
+            ctx.deps.actor_id,
+            action.api_name,
+            params,
+            confirm=action.requires_confirm,
+        )
         return _tool_result(item)
 
     return _with_tool_signature(generated_tool, tool_def.name, tool_def.description or action.description, parameter_defs, tool_def)
@@ -325,6 +331,8 @@ def _tool_result(value: Any) -> Any:
         result = {"id": value.id, "name": value.name}
         if hasattr(value, "location_id"):
             result["location_id"] = value.location_id
+        if hasattr(value, "archived"):
+            result["archived"] = value.archived
         if hasattr(value, "properties") and value.properties:
             result["properties"] = actions._masked_properties(value)
         return result

@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
 from starlette.testclient import TestClient
 from sqlmodel import Session
 
-from home_atlas.app.agents import _tool_result, build_agents, should_use_ai
+from home_atlas.app.agents import HomeAtlasDeps, _tool_result, build_agents, should_use_ai
 from home_atlas.interfaces.cli import init_db
 from home_atlas.core.config import Settings
-from home_atlas.app.actions import recent_activity
+from home_atlas.app.actions import add_item, recent_activity
 from home_atlas.interfaces.mcp_server import HomeAtlasTokenVerifier, build_fastmcp
 from home_atlas.domain.models import ItemKind
 from home_atlas.app.orchestrator import home_atlas, route_request
@@ -116,13 +117,57 @@ def test_generated_ai_toolsets_keep_existing_tool_names() -> None:
     from home_atlas.domain.models import ItemDomain
 
     expected = {
-        ItemDomain.PERISHABLE: {"perishable_add_item", "perishable_search", "perishable_list_expiring"},
-        ItemDomain.CARDS_DOCS: {"card_add_document", "card_upsert_payment_reference", "card_search", "card_where_is"},
-        ItemDomain.EQUIPMENT: {"equipment_add_item", "equipment_search"},
+        ItemDomain.PERISHABLE: {
+            "perishable_add_item",
+            "perishable_discard",
+            "perishable_search",
+            "perishable_list_expiring",
+        },
+        ItemDomain.CARDS_DOCS: {
+            "card_add_document",
+            "card_discard",
+            "card_upsert_payment_reference",
+            "card_search",
+            "card_where_is",
+        },
+        ItemDomain.EQUIPMENT: {"equipment_add_item", "equipment_discard", "equipment_search"},
     }
     for domain, names in expected.items():
         toolset = _build_ai_toolset_for_domain(domain)
         assert set(toolset.tools) == names
+
+
+def test_discard_item_declares_ai_tools_for_each_domain() -> None:
+    from home_atlas.domain.models import ItemDomain
+    from home_atlas.domain.ontology import get_registry
+
+    discard = get_registry().action_types["DiscardItem"]
+
+    assert discard.required_role == "member"
+    assert {tool.domain for tool in discard.ai_tools} == {
+        ItemDomain.PERISHABLE,
+        ItemDomain.CARDS_DOCS,
+        ItemDomain.EQUIPMENT,
+    }
+    assert {tool.name for tool in discard.ai_tools} == {
+        "perishable_discard",
+        "card_discard",
+        "equipment_discard",
+    }
+
+
+def test_generated_ai_discard_tool_archives_with_confirmation(session: Session, actor_id: int) -> None:
+    from home_atlas.app.agents import _build_ai_toolset_for_domain
+    from home_atlas.domain.models import ItemDomain
+
+    item = add_item(session, actor_id=actor_id, name="鸡腿软骨", kind=ItemKind.FOOD, location_name="冰箱")
+    tool = _build_ai_toolset_for_domain(ItemDomain.PERISHABLE).tools["perishable_discard"]
+    ctx = SimpleNamespace(deps=HomeAtlasDeps(session=session, actor_id=actor_id))
+
+    result = tool.function(ctx, item_id=item.id)
+
+    assert result["archived"] is True
+    assert result["name"] == "鸡腿软骨"
 
 
 def test_generated_ai_toolset_detects_registry_action_without_agent_changes(monkeypatch) -> None:

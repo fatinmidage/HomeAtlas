@@ -60,16 +60,22 @@ def test_dispatcher_requires_confirm_for_declared_actions(session: Session, acto
 def test_dispatcher_enforces_rbac(session: Session) -> None:
     admin = Person(name="管理员", roles=["admin"])
     member = Person(name="成员", roles=["member"])
+    viewer = Person(name="观察者", roles=["viewer"])
     session.add(admin)
     session.add(member)
+    session.add(viewer)
     session.commit()
     session.refresh(admin)
     session.refresh(member)
+    session.refresh(viewer)
 
     item = add_item(session, actor_id=admin.id, name="权限测试", kind=ItemKind.FOOD, location_name="冰箱")
 
+    dispatched = dispatch_action(session, member.id, "DiscardItem", {"item_id": item.id}, confirm=True)
+    assert dispatched.archived is True
+
     with pytest.raises(UnauthorizedError, match="lacks permission"):
-        dispatch_action(session, member.id, "DiscardItem", {"item_id": item.id}, confirm=True)
+        dispatch_action(session, viewer.id, "DiscardItem", {"item_id": item.id}, confirm=True)
 
 
 def test_dispatcher_enforces_function_required_role(session: Session, monkeypatch: pytest.MonkeyPatch) -> None:

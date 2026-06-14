@@ -628,7 +628,26 @@ _ACTION_TYPES: list[ActionTypeDef] = [
         ),
         description="归档/丢弃物品",
         implementation="home_atlas.app.actions.discard_item",
-        required_role="admin",
+        ai_tools=(
+            AIToolDef(
+                domain=ItemDomain.PERISHABLE,
+                name="perishable_discard",
+                parameter_names=("item_id",),
+                description="Archive or discard a food or medicine item after the user says it is gone, used, eaten, or should be removed.",
+            ),
+            AIToolDef(
+                domain=ItemDomain.CARDS_DOCS,
+                name="card_discard",
+                parameter_names=("item_id",),
+                description="Archive or discard a card, document, policy, or certificate reference.",
+            ),
+            AIToolDef(
+                domain=ItemDomain.EQUIPMENT,
+                name="equipment_discard",
+                parameter_names=("item_id",),
+                description="Archive or discard a tool or appliance item.",
+            ),
+        ),
     ),
     ActionTypeDef(
         api_name="SetPersonRole",
