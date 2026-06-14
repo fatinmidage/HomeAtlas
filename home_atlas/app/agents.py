@@ -4,6 +4,7 @@ import importlib
 import inspect
 from dataclasses import dataclass
 from functools import lru_cache
+from threading import RLock
 from typing import Any
 
 from pydantic_ai import Agent, FunctionToolset, RunContext
@@ -23,6 +24,12 @@ from home_atlas.core.security import HomeAtlasError
 class HomeAtlasDeps:
     session: Session
     actor_id: int
+    db_lock: Any
+
+    def __init__(self, session: Session, actor_id: int, db_lock: Any | None = None) -> None:
+        self.session = session
+        self.actor_id = actor_id
+        self.db_lock = db_lock or RLock()
 
 
 @dataclass(frozen=True)
@@ -136,7 +143,7 @@ def build_agents(model: str) -> HomeAtlasAgents:
         """Return the most recent audit event and actor for any household item."""
 
         try:
-            return dispatch_function(ctx.deps.session, ctx.deps.actor_id, "last_touched", {"name": name})
+            return _dispatch_function(ctx.deps, "last_touched", {"name": name})
         except HomeAtlasError as exc:
             return {"error": str(exc)}
 
@@ -144,18 +151,13 @@ def build_agents(model: str) -> HomeAtlasAgents:
     def atlas_list_expiring(ctx: RunContext[HomeAtlasDeps], within_days: int = 30) -> list[dict[str, Any]]:
         """List items with expiry or renewal dates within the given number of days."""
 
-        return dispatch_function(
-            ctx.deps.session,
-            ctx.deps.actor_id,
-            "list_expiring",
-            {"within_days": within_days},
-        )
+        return _dispatch_function(ctx.deps, "list_expiring", {"within_days": within_days})
 
     @orchestrator_toolset.tool
     def atlas_list_items(ctx: RunContext[HomeAtlasDeps]) -> list[dict[str, Any]]:
         """List all non-archived household inventory items across every domain."""
 
-        return dispatch_function(ctx.deps.session, ctx.deps.actor_id, "search_items", {})
+        return _dispatch_function(ctx.deps, "search_items", {})
 
     @orchestrator_toolset.tool
     def atlas_traverse_links(
@@ -167,7 +169,8 @@ def build_agents(model: str) -> HomeAtlasAgents:
         """Traverse relationships across object types via the shortest link path."""
 
         try:
-            return auto_traverse(ctx.deps.session, source_type, source_id, target_type)
+            with ctx.deps.db_lock:
+                return auto_traverse(ctx.deps.session, source_type, source_id, target_type)
         except HomeAtlasError as exc:
             return [{"error": str(exc)}]
 
@@ -226,13 +229,7 @@ def _make_action_tool(action: ActionTypeDef, tool_def: AIToolDef):
         params = {**tool_def.constants, **tool_def.defaults, **kwargs}
         if adapter is not None:
             params = adapter(**params)
-        item = dispatch_action(
-            ctx.deps.session,
-            ctx.deps.actor_id,
-            action.api_name,
-            params,
-            confirm=action.requires_confirm,
-        )
+        item = _dispatch_action(ctx.deps, action.api_name, params, confirm=action.requires_confirm)
         return _tool_result(item)
 
     return _with_tool_signature(generated_tool, tool_def.name, tool_def.description or action.description, parameter_defs, tool_def)
@@ -243,9 +240,19 @@ def _make_function_tool(function: FunctionDef, tool_def: AIToolDef):
 
     def generated_tool(ctx: RunContext[HomeAtlasDeps], **kwargs: Any) -> Any:
         params = {**tool_def.constants, **tool_def.defaults, **kwargs}
-        return dispatch_function(ctx.deps.session, ctx.deps.actor_id, function.api_name, params)
+        return _dispatch_function(ctx.deps, function.api_name, params)
 
     return _with_tool_signature(generated_tool, tool_def.name, tool_def.description or function.description, parameter_defs, tool_def)
+
+
+def _dispatch_action(deps: HomeAtlasDeps, api_name: str, params: dict[str, Any], confirm: bool = False) -> Any:
+    with deps.db_lock:
+        return dispatch_action(deps.session, deps.actor_id, api_name, params, confirm=confirm)
+
+
+def _dispatch_function(deps: HomeAtlasDeps, api_name: str, params: dict[str, Any]) -> Any:
+    with deps.db_lock:
+        return dispatch_function(deps.session, deps.actor_id, api_name, params)
 
 
 def _tool_parameter_defs(

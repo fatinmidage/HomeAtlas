@@ -171,6 +171,39 @@ def test_generated_ai_discard_tool_archives_with_confirmation(session: Session, 
     assert result["name"] == "鸡腿软骨"
 
 
+def test_generated_ai_action_tools_hold_db_lock(monkeypatch, session: Session, actor_id: int) -> None:
+    from home_atlas.app import agents
+    from home_atlas.app.agents import _build_ai_toolset_for_domain
+    from home_atlas.domain.models import ItemDomain
+
+    class RecordingLock:
+        def __init__(self) -> None:
+            self.entered = False
+            self.checked_during_dispatch = False
+
+        def __enter__(self):
+            self.entered = True
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            self.entered = False
+
+    lock = RecordingLock()
+
+    def fake_dispatch_action(*args, **kwargs):
+        lock.checked_during_dispatch = lock.entered
+        return SimpleNamespace(id=1, name="鸡腿软骨", location_id=1, archived=True, properties={})
+
+    monkeypatch.setattr(agents, "dispatch_action", fake_dispatch_action)
+    tool = _build_ai_toolset_for_domain(ItemDomain.PERISHABLE).tools["perishable_discard"]
+    ctx = SimpleNamespace(deps=HomeAtlasDeps(session=session, actor_id=actor_id, db_lock=lock))
+
+    result = tool.function(ctx, item_id=1)
+
+    assert result["archived"] is True
+    assert lock.checked_during_dispatch is True
+
+
 def test_generated_ai_toolset_detects_registry_action_without_agent_changes(monkeypatch) -> None:
     from home_atlas.app.agents import _build_ai_toolset_for_domain, build_agents
     from home_atlas.domain.models import EventAction, ItemDomain, ItemKind
