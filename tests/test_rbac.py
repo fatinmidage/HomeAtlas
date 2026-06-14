@@ -6,7 +6,7 @@ from sqlmodel import Session, select
 from home_atlas.app.actions import add_item, discard_item, set_person_role, update_item
 from home_atlas.domain.models import Event, EventAction, ItemKind, Person
 from home_atlas.domain.ontology import build_registry
-from home_atlas.core.security import UnauthorizedError
+from home_atlas.core.security import HomeAtlasError, UnauthorizedError
 
 
 def _create_person(session: Session, name: str, roles: list[str]) -> int:
@@ -28,8 +28,9 @@ def test_viewer_cannot_add_item(session: Session) -> None:
         )
 
 
-def test_member_can_add_and_discard_but_not_update(session: Session) -> None:
+def test_member_can_add_discard_and_update_routine_fields(session: Session) -> None:
     member_id = _create_person(session, "成员", ["member"])
+    viewer_id = _create_person(session, "观察者二号", ["viewer"])
 
     item = add_item(
         session, actor_id=member_id, name="成员物品",
@@ -37,11 +38,17 @@ def test_member_can_add_and_discard_but_not_update(session: Session) -> None:
     )
     assert item.id is not None
 
+    updated = update_item(session, actor_id=member_id, item_id=item.id, notes="成员可改日常字段")
+    assert updated.notes == "成员可改日常字段"
+
+    with pytest.raises(HomeAtlasError, match="overwriting identifying fields requires confirm=true"):
+        update_item(session, actor_id=member_id, item_id=item.id, name="新名字")
+
     discarded = discard_item(session, actor_id=member_id, item_id=item.id, confirm=True)
     assert discarded.archived is True
 
     with pytest.raises(UnauthorizedError, match="lacks permission"):
-        update_item(session, actor_id=member_id, item_id=item.id, confirm=True, name="新名字")
+        update_item(session, actor_id=viewer_id, item_id=item.id, notes="viewer 不可改")
 
 
 def test_admin_can_do_everything(session: Session, actor_id: int) -> None:

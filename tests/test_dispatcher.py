@@ -33,7 +33,7 @@ def test_dispatcher_rejects_missing_unknown_and_wrong_type(session: Session, act
         )
 
 
-def test_dispatcher_requires_confirm_for_declared_actions(session: Session, actor_id: int) -> None:
+def test_dispatcher_update_routine_fields_do_not_require_confirm(session: Session, actor_id: int) -> None:
     item = dispatch_action(
         session,
         actor_id,
@@ -41,17 +41,19 @@ def test_dispatcher_requires_confirm_for_declared_actions(session: Session, acto
         {"name": "确认测试", "kind": "tool", "location_name": "工具箱"},
     )
 
-    with pytest.raises(HomeAtlasError, match="UpdateItem requires confirm=true"):
-        dispatch_action(session, actor_id, "UpdateItem", {"item_id": item.id, "notes": "只改备注"})
-
     updated = dispatch_action(
         session,
         actor_id,
         "UpdateItem",
-        {"item_id": item.id, "notes": "已确认"},
-        confirm=True,
+        {"item_id": item.id, "notes": "只改备注"},
     )
-    assert updated.notes == "已确认"
+    assert updated.notes == "只改备注"
+
+    with pytest.raises(HomeAtlasError, match="overwriting identifying fields requires confirm=true"):
+        dispatch_action(session, actor_id, "UpdateItem", {"item_id": item.id, "name": "新名字"})
+
+    renamed = dispatch_action(session, actor_id, "UpdateItem", {"item_id": item.id, "name": "新名字", "confirm": True})
+    assert renamed.name == "新名字"
 
     with pytest.raises(HomeAtlasError, match="DiscardItem requires confirm=true"):
         dispatch_action(session, actor_id, "DiscardItem", {"item_id": item.id})
@@ -71,8 +73,14 @@ def test_dispatcher_enforces_rbac(session: Session) -> None:
 
     item = add_item(session, actor_id=admin.id, name="权限测试", kind=ItemKind.FOOD, location_name="冰箱")
 
+    updated = dispatch_action(session, member.id, "UpdateItem", {"item_id": item.id, "notes": "成员可改日常字段"})
+    assert updated.notes == "成员可改日常字段"
+
     dispatched = dispatch_action(session, member.id, "DiscardItem", {"item_id": item.id}, confirm=True)
     assert dispatched.archived is True
+
+    with pytest.raises(UnauthorizedError, match="lacks permission"):
+        dispatch_action(session, viewer.id, "UpdateItem", {"item_id": item.id, "notes": "viewer 不可改"})
 
     with pytest.raises(UnauthorizedError, match="lacks permission"):
         dispatch_action(session, viewer.id, "DiscardItem", {"item_id": item.id}, confirm=True)

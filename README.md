@@ -187,7 +187,8 @@ hermes skills check
 这个 Skill 的作用是告诉 Hermes：
 
 - 什么时候该调用 HomeAtlas。
-- 只调用一个工具：`home_atlas(request)`。
+- 读/模糊查询调用 `home_atlas(request)`。
+- 明确写入调用结构化工具：`search_items`、`add_item`、`move_item`、`update_item`、`discard_item`。
 - 不要绕过 MCP 直接读数据库。
 - 不要把完整银行卡号、CVV 等敏感信息传给服务。
 
@@ -195,6 +196,11 @@ hermes skills check
 
 ```text
 mcp_home_atlas_home_atlas
+mcp_home_atlas_search_items
+mcp_home_atlas_add_item
+mcp_home_atlas_move_item
+mcp_home_atlas_update_item
+mcp_home_atlas_discard_item
 ```
 
 然后就可以直接说：

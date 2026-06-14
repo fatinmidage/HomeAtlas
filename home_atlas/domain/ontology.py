@@ -582,11 +582,11 @@ _ACTION_TYPES: list[ActionTypeDef] = [
             ActionParameterDef("properties", dict, False, "类型属性"),
             ActionParameterDef("notes", str, False, "备注"),
             ActionParameterDef("archived", bool, False, "是否归档"),
+            ActionParameterDef("confirm", bool, False, "确认覆盖名称/属性等标识字段"),
         ),
-        requires_confirm=True,
         description="更新物品属性",
         implementation="home_atlas.app.actions.update_item",
-        required_role="admin",
+        required_role="member",
     ),
     ActionTypeDef(
         api_name="UpsertCardReference",

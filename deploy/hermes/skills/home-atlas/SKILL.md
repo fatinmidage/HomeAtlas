@@ -1,7 +1,7 @@
 ---
 name: home-atlas
-description: "家庭物品管理。通过单个 MCP 工具 home_atlas(request) 记录家里东西放在哪、查找物品位置、查谁动过、提醒临期/待续费。当用户说\"把X放进Y\"\"X在哪\"\"上次谁动了X\"\"哪些药/卡快过期\"等家庭物品类自然语言请求时使用。Household inventory: where things are stored, find items, audit who moved them, expiry/renewal reminders."
-version: 1.1.0
+description: "家庭物品管理。读/模糊查询用 home_atlas(request)，明确写入用结构化 MCP 工具 add_item/update_item/move_item/discard_item，并用 search_items 取 item_id。当用户说\"把X放进Y\"\"X在哪\"\"上次谁动了X\"\"哪些药/卡快过期\"等家庭物品类请求时使用。Household inventory: where things are stored, find items, audit who moved them, expiry/renewal reminders."
+version: 1.2.0
 author: HomeAtlas
 license: MIT
 platforms: [linux, macos, windows]
@@ -14,7 +14,7 @@ prerequisites:
 
 # HomeAtlas
 
-HomeAtlas 是家里两口子共享的物品管理服务。你（Hermes）只通过**一个工具** `home_atlas(request)` 与它交互：把用户的中文自然语言原样传进去，它在服务端完成路由、落库、审计，并返回结果。
+HomeAtlas 是家里两口子共享的物品管理服务。你（Hermes）通过 MCP 与它交互：**读/模糊查询**使用 `home_atlas(request)`，**明确写入**优先使用结构化工具，服务端负责权限、校验、落库、审计和敏感字段脱敏。
 
 ## 何时使用（When to Use）
 
@@ -33,16 +33,23 @@ HomeAtlas 是家里两口子共享的物品管理服务。你（Hermes）只通�
 本 skill 依赖一个名为 `home_atlas` 的 **MCP server** 已在 `~/.hermes/config.yaml` 中配好（HTTP + Bearer token）。没有它，`home_atlas` 工具不存在，本 skill 无从调用。配置方法见仓库 `deploy/hermes/mcp.yaml.example`。
 
 - **服务端点**（仅排错/手动验证时才需要，正常调用根本不用关心）：`http://localhost:8080/mcp` 或你的家庭服务器局域网地址，端口 **8080**。不要去猜别的端口。
-- **用前先确认工具已注册**：在你的可用工具列表中查找 `mcp_home_atlas_home_atlas`。看到了再开始用。
+- **用前先确认工具已注册**：在你的可用工具列表中查找 `mcp_home_atlas_home_atlas`，以及 `mcp_home_atlas_add_item` / `mcp_home_atlas_search_items` 等结构化工具。看到了再开始用。
 - 本 skill **自包含**，无需加载 `native-mcp`、`mcporter` 或任何其它 skill。
 
 ## 如何调用（Workflow）
 
-1. **先判断工具是否已注册**：在你的可用工具列表中查找 `mcp_home_atlas_home_atlas`。如果存在，直接调用，**并信任其返回结果**。MCP 工具连接的是生产 PostgreSQL 数据库，返回的数据是权威来源。不要因为结果"看起来可疑"就用 `terminal` 查本地文件验证——本地文件和生产数据库是隔离的：
+1. **先判断工具是否已注册**：在你的可用工具列表中查找 `mcp_home_atlas_home_atlas` 和结构化写工具。MCP 工具连接的是生产 PostgreSQL 数据库，返回的数据是权威来源。不要因为结果"看起来可疑"就用 `terminal` 查本地文件验证——本地文件和生产数据库是隔离的。
+2. **读/模糊请求用 `home_atlas(request)`**。例如查位置、查审计、查临期、开放式搜索：
    ```
-   home_atlas(request="把护照放进保险柜抽屉")
+   home_atlas(request="护照在哪？")
    ```
-2. **如果工具未注册**（MCP 连接在 Hermes 启动时失败），不要尝试 `terminal(curl ...)`——MCP streamable-HTTP 需要三步握手（initialize → session-id → tools/call），裸 curl 极易因 shell 转义和 session 管理反复失败。直接用 `execute_code` 调用 MCP Python 客户端，它会自动完成握手与 session 管理：
+3. **明确写入优先用结构化工具**，这样能拿到写入后的结构化快照并核对结果：
+   - 新增物品：`add_item(name, kind, location_name, ...)`
+   - 移动物品：先 `search_items(query=...)` 取 `item_id`，再 `move_item(item_id, location_name)`
+   - 更新保质期/续费/购买日/数量/单位/备注：先 `search_items` 取 `item_id`，再 `update_item(item_id, ...)`
+   - 归档/丢弃：先 `search_items` 取 `item_id`，向用户确认后再 `discard_item(item_id)`
+4. **多候选时不要猜**。`search_items` 返回多个相近物品时，先问用户要改哪一个，再带对应 `item_id` 写入。
+5. **如果工具未注册**（MCP 连接在 Hermes 启动时失败），不要尝试 `terminal(curl ...)`——MCP streamable-HTTP 需要三步握手（initialize → session-id → tools/call），裸 curl 极易因 shell 转义和 session 管理反复失败。直接用 `execute_code` 调用 MCP Python 客户端，它会自动完成握手与 session 管理：
    ```python
    import asyncio
    from mcp.client.session import ClientSession
@@ -60,8 +67,8 @@ HomeAtlas 是家里两口子共享的物品管理服务。你（Hermes）只通�
    asyncio.run(main())
    ```
    Token 在 `config.yaml` 和 `项目/HomeAtlas/.env` 的 `HOME_ATLAS_TOKEN_MAP` 中；如果不可见或不确定，请让用户确认正确 token，不要尝试绕过安全脱敏。
-3. **一次只表达一个意图**。如果用户一句话里有多件事（"把A放进B，顺便看看C在哪"），拆成多次调用，更稳。
-4. **返回值是一个 dict**，通常含 `intent` 和 `answer` 字段。把 `answer` 转述给用户即可；需要细节时再引用其余字段（如 `items`、`event`）。
+6. **一次只表达一个意图**。如果用户一句话里有多件事（"把A放进B，顺便看看C在哪"），拆成多次调用，更稳。
+7. **返回值是一个 dict**。`home_atlas(request)` 通常含 `intent` 和 `answer`；结构化写工具返回 `{"status":"ok","item":...}`，把 `item` 里的位置、日期、数量等关键字段核对后转述给用户。
 
 ## 重要约束（Quality Bar）
 
@@ -69,8 +76,9 @@ HomeAtlas 是家里两口子共享的物品管理服务。你（Hermes）只通�
   - ✅ `home_atlas(request="登记一张招行信用卡，后四位 1234，存在书房抽屉")`
   - ❌ `home_atlas(request="登记信用卡 6225...完整卡号...")`
 - **不要在请求里编造"我是谁"**。操作人（actor）由服务端根据你的 Bearer token 自动识别并写入审计。你只描述"做什么"，不描述"谁做的"。
-- **需要确认/管理员权限的改动由服务端控制**。更新、丢弃、角色变更等敏感 Action 会走服务端 RBAC 和 confirm 规则；普通自然语言入库/移动不需要你额外构造身份字段。
-- **只有 `home_atlas` 一个工具**。不要尝试调用 `add_item`、`search` 等细分名字——它们不对外暴露，统一走 `home_atlas(request)`。
+- **破坏性操作先问用户确认**。调用 `discard_item` 前必须先向用户确认；确认后再调用该工具。改 `name` / `properties` 这类标识字段时，必须先确认，再调用 `update_item(..., confirm=true)`。
+- **写入前先拿 `item_id`**。移动、更新、丢弃都需要 `item_id`；如果用户只说了名称，先用 `search_items` 查候选。多个候选时让用户选，不要猜。
+- **不要把结构化工具用于开放式读问题**。查位置、查审计、临期清单、模糊搜索仍可用 `home_atlas(request)`；只有明确写入才优先走 `add_item` / `move_item` / `update_item` / `discard_item`。
 - **绝不绕过 MCP 工具直接访问数据库**。不要用 `terminal`、`execute_code`、`read_file` 等方式读取 `home_atlas.db`、`config.py`、`.env` 或执行 SQL 查询。HomeAtlas 的生产数据在 PostgreSQL 中，由 Docker 容器管理；本地项目目录下的 `home_atlas.db` 是过时的开发库，数据与生产不同步。用它"交叉验证"只会得出错误结论。
   - ❌ `terminal("sqlite3 home_atlas.db ...")`
   - ❌ `execute_code("from home_atlas.core.config import ...")`
@@ -80,10 +88,12 @@ HomeAtlas 是家里两口子共享的物品管理服务。你（Hermes）只通�
 
 | 用户说 | 你调用 | 期望结果 |
 |---|---|---|
-| 把护照放进保险柜抽屉 | `home_atlas("把护照放进保险柜抽屉")` | 已入库到该位置 |
+| 把护照放进保险柜抽屉 | `add_item(name="护照", kind="document", location_name="保险柜抽屉")` | 返回写入后的物品快照 |
 | 护照在哪？ | `home_atlas("护照在哪？")` | 返回位置 |
 | 上次谁动了护照？ | `home_atlas("上次谁动了护照？")` | 返回 actor + 时间 |
 | 哪些东西 14 天内临期或待续费？ | `home_atlas("哪些东西 14 天内临期或待续费？")` | 临期/续费清单 |
+| 豆腐乳保质期改到 2026-12-14 | `search_items(query="豆腐乳")` → `update_item(item_id=..., expiry_date="2026-12-14")` | 返回更新后的日期 |
+| 这个豆腐乳吃完了，归档 | 先确认 → `search_items(query="豆腐乳")` → `discard_item(item_id=...)` | `archived=true` |
 
 ## 定时提醒（可选）
 

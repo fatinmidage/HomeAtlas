@@ -484,6 +484,13 @@ def get_item(session: Session, item_id: int) -> dict[str, Any]:
     return _item_dict(item, location)
 
 
+def item_snapshot(session: Session, item: Item) -> dict[str, Any]:
+    location = session.get(Location, item.location_id)
+    if location is None:
+        raise HomeAtlasError(f"location {item.location_id} not found")
+    return _item_dict(item, location)
+
+
 def where_is(session: Session, name: str) -> dict[str, Any]:
     rows = search_items(session, query=name)
     exact = [row for row in rows if row["name"] == name]

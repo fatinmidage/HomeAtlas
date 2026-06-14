@@ -6,14 +6,15 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from starlette.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from home_atlas.app.agents import HomeAtlasDeps, _tool_result, build_agents, should_use_ai
 from home_atlas.interfaces.cli import init_db
 from home_atlas.core.config import Settings
 from home_atlas.app.actions import add_item, recent_activity
 from home_atlas.interfaces.mcp_server import HomeAtlasTokenVerifier, build_fastmcp
-from home_atlas.domain.models import ItemKind
+from home_atlas.infra.db import create_db_engine, session_scope
+from home_atlas.domain.models import Item, ItemKind
 from home_atlas.app.orchestrator import home_atlas, route_request
 from home_atlas.app.toolsets import all_toolsets, assert_tool_isolation
 
@@ -61,19 +62,109 @@ def _migrated_settings(tmp_path: Path, filename: str) -> Settings:
     return settings
 
 
-def test_fastmcp_exposes_single_request_argument(tmp_path: Path) -> None:
-    async def list_tool_schema() -> dict:
+def test_fastmcp_exposes_read_write_split_tools(tmp_path: Path) -> None:
+    async def list_tool_schemas() -> dict[str, dict]:
         mcp = build_fastmcp(_migrated_settings(tmp_path, "home_atlas_test_mcp_schema.db"))
         tools = await mcp.list_tools()
-        assert len(tools) == 2
-        tool_names = {t.name for t in tools}
-        assert "home_atlas" in tool_names
-        assert "ontology_describe" in tool_names
+        tool_names = {tool.name for tool in tools}
+        assert tool_names == {
+            "home_atlas",
+            "ontology_describe",
+            "search_items",
+            "add_item",
+            "move_item",
+            "discard_item",
+            "update_item",
+        }
+        schemas = {tool.name: tool.inputSchema for tool in tools}
         ha_tool = next(t for t in tools if t.name == "home_atlas")
-        return ha_tool.inputSchema
+        assert set(ha_tool.inputSchema["properties"]) == {"request"}
+        return schemas
 
-    schema = asyncio.run(list_tool_schema())
-    assert set(schema["properties"]) == {"request"}
+    schemas = asyncio.run(list_tool_schemas())
+    assert schemas["add_item"]["required"] == ["name", "kind", "location_name"]
+    assert schemas["move_item"]["required"] == ["item_id", "location_name"]
+    assert schemas["discard_item"]["required"] == ["item_id"]
+    assert schemas["update_item"]["required"] == ["item_id"]
+    assert {"query", "kind", "domain", "location", "expiring_within_days", "include_archived"} <= set(
+        schemas["search_items"]["properties"]
+    )
+
+
+def test_fastmcp_structured_tools_write_and_return_snapshots(tmp_path: Path) -> None:
+    async def run_tools() -> tuple[dict, dict, dict, dict, dict]:
+        settings = _migrated_settings(tmp_path, "home_atlas_test_mcp_write_tools.db")
+        mcp = build_fastmcp(settings)
+        ctx = SimpleNamespace(
+            request_context=SimpleNamespace(meta=SimpleNamespace(home_atlas_bearer_token="you-token"))
+        )
+        created = await mcp._tool_manager.call_tool(
+            "add_item",
+            {
+                "name": "豆腐乳",
+                "kind": "food",
+                "location_name": "厨房柜子",
+                "quantity": 2,
+                "unit": "瓶",
+                "expiry_date": "2026-12-14",
+                "properties": {"brand": "测试牌"},
+            },
+            context=ctx,
+        )
+        found = await mcp._tool_manager.call_tool("search_items", {"query": "豆腐乳"}, context=ctx)
+        item_id = found["items"][0]["id"]
+        moved = await mcp._tool_manager.call_tool(
+            "move_item",
+            {"item_id": item_id, "location_name": "冰箱"},
+            context=ctx,
+        )
+        updated = await mcp._tool_manager.call_tool(
+            "update_item",
+            {"item_id": item_id, "expiry_date": "2027-01-01", "quantity": 1},
+            context=ctx,
+        )
+        discarded = await mcp._tool_manager.call_tool("discard_item", {"item_id": item_id}, context=ctx)
+
+        engine = create_db_engine(settings)
+        with session_scope(engine) as session:
+            db_item = session.exec(select(Item).where(Item.id == item_id)).one()
+            assert db_item.expiry_date == date(2027, 1, 1)
+            assert db_item.archived is True
+
+        return created, found, moved, updated, discarded
+
+    created, found, moved, updated, discarded = asyncio.run(run_tools())
+    assert created["status"] == "ok"
+    assert created["item"]["expiry_date"] == "2026-12-14"
+    assert created["item"]["location"] == "厨房柜子"
+    assert found["items"][0]["id"] == created["item"]["id"]
+    assert moved["item"]["location"] == "冰箱"
+    assert updated["item"]["expiry_date"] == "2027-01-01"
+    assert updated["item"]["quantity"] == 1.0
+    assert discarded["item"]["archived"] is True
+
+
+def test_fastmcp_write_tool_snapshots_mask_secret_properties(tmp_path: Path) -> None:
+    async def add_membership_card() -> dict:
+        settings = _migrated_settings(tmp_path, "home_atlas_test_mcp_masking.db")
+        mcp = build_fastmcp(settings)
+        ctx = SimpleNamespace(
+            request_context=SimpleNamespace(meta=SimpleNamespace(home_atlas_bearer_token="you-token"))
+        )
+        return await mcp._tool_manager.call_tool(
+            "add_item",
+            {
+                "name": "超市会员卡",
+                "kind": "membership_card",
+                "location_name": "钱包",
+                "properties": {"issuer": "测试超市", "member_id": "ABC123456789"},
+            },
+            context=ctx,
+        )
+
+    result = asyncio.run(add_membership_card())
+
+    assert result["item"]["properties"]["member_id"] == "****6789"
 
 
 def test_fastmcp_requires_bearer_auth_when_tokens_are_configured(tmp_path: Path) -> None:
