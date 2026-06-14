@@ -223,7 +223,7 @@ def _make_action_tool(action: ActionTypeDef, tool_def: AIToolDef):
     adapter = _resolve_adapter(tool_def.adapter)
 
     def generated_tool(ctx: RunContext[HomeAtlasDeps], **kwargs: Any) -> Any:
-        params = {**tool_def.constants, **kwargs}
+        params = {**tool_def.constants, **tool_def.defaults, **kwargs}
         if adapter is not None:
             params = adapter(**params)
         item = dispatch_action(
@@ -242,7 +242,7 @@ def _make_function_tool(function: FunctionDef, tool_def: AIToolDef):
     parameter_defs = _tool_parameter_defs(function.parameters, tool_def)
 
     def generated_tool(ctx: RunContext[HomeAtlasDeps], **kwargs: Any) -> Any:
-        params = {**tool_def.constants, **kwargs}
+        params = {**tool_def.constants, **tool_def.defaults, **kwargs}
         return dispatch_function(ctx.deps.session, ctx.deps.actor_id, function.api_name, params)
 
     return _with_tool_signature(generated_tool, tool_def.name, tool_def.description or function.description, parameter_defs, tool_def)

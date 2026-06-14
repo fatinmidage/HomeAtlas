@@ -19,7 +19,7 @@ from home_atlas.app.actions import (
     upsert_card_reference,
     where_is,
 )
-from home_atlas.domain.models import Event, EventAction, ItemKind
+from home_atlas.domain.models import Event, EventAction, Item, ItemKind, domain_for_kind
 from home_atlas.core.security import HomeAtlasError, UnauthorizedError, resolve_actor_id
 
 
@@ -41,20 +41,8 @@ def test_add_move_and_audit_actor(session: Session, actor_id: int) -> None:
 
 
 def test_where_is_returns_most_recent_duplicate_name(session: Session, actor_id: int) -> None:
-    older = add_item(
-        session,
-        actor_id=actor_id,
-        name="备用钥匙",
-        kind=ItemKind.OTHER,
-        location_name="玄关柜",
-    )
-    newer = add_item(
-        session,
-        actor_id=actor_id,
-        name="备用钥匙",
-        kind=ItemKind.OTHER,
-        location_name="书房抽屉",
-    )
+    older = _insert_item(session, actor_id, name="备用钥匙", kind=ItemKind.OTHER, location_name="玄关柜")
+    newer = _insert_item(session, actor_id, name="备用钥匙", kind=ItemKind.OTHER, location_name="书房抽屉")
 
     result = where_is(session, "备用钥匙")
 
@@ -62,6 +50,32 @@ def test_where_is_returns_most_recent_duplicate_name(session: Session, actor_id:
     assert result["id"] == newer.id
     assert result["location"] == "书房抽屉"
     assert "返回最近更新的" in result["match_note"]
+
+
+def test_add_item_updates_existing_same_name_and_kind(session: Session, actor_id: int) -> None:
+    created = add_item(
+        session,
+        actor_id=actor_id,
+        name="鸡蛋",
+        kind=ItemKind.FOOD,
+        location_name="冷藏区",
+    )
+
+    updated = add_item(
+        session,
+        actor_id=actor_id,
+        name="鸡蛋",
+        kind=ItemKind.FOOD,
+        location_name="冷藏区",
+        expiry_date=date(2026, 7, 13),
+    )
+
+    results = search_items(session, query="鸡蛋")
+    events = session.exec(select(Event).where(Event.item_id == created.id).order_by(Event.version)).all()
+    assert updated.id == created.id
+    assert len(results) == 1
+    assert results[0]["expiry_date"] == "2026-07-13"
+    assert [event.action for event in events] == [EventAction.ADD_ITEM, EventAction.UPDATE_ITEM]
 
 
 def test_quantity_actions_validate_and_write_events(session: Session, actor_id: int) -> None:
@@ -314,17 +328,17 @@ def test_search_items_rejects_nested_property_filter(session: Session) -> None:
 
 
 def test_upsert_card_reference_updates_most_recent_duplicate(session: Session, actor_id: int) -> None:
-    older = add_item(
+    older = _insert_item(
         session,
-        actor_id=actor_id,
+        actor_id,
         name="商场会员",
         kind=ItemKind.MEMBERSHIP_CARD,
         location_name="旧钱包",
         properties={"member_id": "MEM00001111", "issuer": "商场"},
     )
-    newer = add_item(
+    newer = _insert_item(
         session,
-        actor_id=actor_id,
+        actor_id,
         name="商场会员",
         kind=ItemKind.MEMBERSHIP_CARD,
         location_name="新钱包",
@@ -343,3 +357,30 @@ def test_upsert_card_reference_updates_most_recent_duplicate(session: Session, a
     assert updated.id == newer.id
     assert where_is(session, "商场会员")["location"] == "手机卡包"
     assert older.location_id != updated.location_id
+
+
+def _insert_item(
+    session: Session,
+    actor_id: int,
+    *,
+    name: str,
+    kind: ItemKind,
+    location_name: str,
+    properties: dict | None = None,
+) -> Item:
+    from home_atlas.app.actions import _location
+
+    location = _location(session, location_name)
+    item = Item(
+        name=name,
+        kind=kind,
+        domain=domain_for_kind(kind),
+        location_id=location.id,
+        properties=properties or {},
+        added_by_id=actor_id,
+        updated_by_id=actor_id,
+    )
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item

@@ -142,6 +142,41 @@ def add_item(
         reject_payment_card_secrets(properties)
     properties = validate_item_properties(kind, properties)
     location = _location(session, location_name)
+    existing = session.exec(
+        select(Item)
+        .where(Item.name == name, Item.kind == kind, Item.archived == False)  # noqa: E712
+        .order_by(Item.updated_at.desc(), Item.id.desc())
+    ).first()
+    if existing is not None:
+        before = _snapshot(existing)
+        existing.location_id = location.id
+        for field_name, value in {
+            "quantity": quantity,
+            "unit": unit,
+            "expiry_date": expiry_date,
+            "renewal_date": renewal_date,
+            "purchase_date": purchase_date,
+            "notes": notes,
+        }.items():
+            if value is not None:
+                setattr(existing, field_name, value)
+        if properties:
+            existing.properties = properties
+        existing.updated_by_id = actor_id
+        existing.updated_at = utc_now()
+        session.add(existing)
+        session.flush()
+        _event(
+            session,
+            item=existing,
+            actor_id=actor_id,
+            action=EventAction.UPDATE_ITEM,
+            summary=f"Updated existing {name} in {location_name}",
+            before=before,
+        )
+        session.commit()
+        session.refresh(existing)
+        return existing
     item = Item(
         name=name,
         kind=kind,

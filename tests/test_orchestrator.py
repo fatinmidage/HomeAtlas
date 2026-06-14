@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -211,9 +212,31 @@ def test_generated_ai_add_item_schema_matches_action_parameter_definitions() -> 
     tool = _build_ai_toolset_for_domain(ItemDomain.PERISHABLE).tools["perishable_add_item"]
     schema = tool.function_schema.json_schema
 
-    assert set(schema["properties"]) == {"name", "kind", "location_name", "quantity", "unit"}
+    assert set(schema["properties"]) == {
+        "name",
+        "kind",
+        "location_name",
+        "quantity",
+        "unit",
+        "expiry_date",
+        "purchase_date",
+    }
     assert schema["required"] == ["name", "location_name"]
     assert schema["properties"]["kind"]["default"] == "food"
+
+
+def test_generated_ai_add_item_writes_expiry_date(session: Session, actor_id: int) -> None:
+    from home_atlas.app.agents import _build_ai_toolset_for_domain
+    from home_atlas.app.actions import where_is
+    from home_atlas.domain.models import ItemDomain
+
+    tool = _build_ai_toolset_for_domain(ItemDomain.PERISHABLE).tools["perishable_add_item"]
+    ctx = SimpleNamespace(deps=HomeAtlasDeps(session=session, actor_id=actor_id))
+
+    result = tool.function(ctx, name="鸡蛋", location_name="冷藏区", expiry_date=date(2026, 7, 13))
+
+    assert result["name"] == "鸡蛋"
+    assert where_is(session, "鸡蛋")["expiry_date"] == "2026-07-13"
 
 
 def test_ai_tool_result_masks_secret_properties(session: Session, actor_id: int) -> None:

@@ -512,9 +512,9 @@ _ACTION_TYPES: list[ActionTypeDef] = [
             AIToolDef(
                 domain=ItemDomain.PERISHABLE,
                 name="perishable_add_item",
-                parameter_names=("name", "location_name", "kind", "quantity", "unit"),
+                parameter_names=("name", "location_name", "kind", "quantity", "unit", "expiry_date", "purchase_date"),
                 defaults={"kind": ItemKind.FOOD},
-                description="Add food or medicine to a household location.",
+                description="Add or update food or medicine in a household location, including optional expiry and purchase dates.",
             ),
             AIToolDef(
                 domain=ItemDomain.CARDS_DOCS,
