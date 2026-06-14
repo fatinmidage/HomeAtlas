@@ -1,7 +1,7 @@
 ---
 name: home-atlas
 description: "家庭物品管理。通过单个 MCP 工具 home_atlas(request) 记录家里东西放在哪、查找物品位置、查谁动过、提醒临期/待续费。当用户说\"把X放进Y\"\"X在哪\"\"上次谁动了X\"\"哪些药/卡快过期\"等家庭物品类自然语言请求时使用。Household inventory: where things are stored, find items, audit who moved them, expiry/renewal reminders."
-version: 1.0.1
+version: 1.1.0
 author: HomeAtlas
 license: MIT
 platforms: [linux, macos, windows]
@@ -38,7 +38,7 @@ HomeAtlas 是家里两口子共享的物品管理服务。你（Hermes）只通�
 
 ## 如何调用（Workflow）
 
-1. **先判断工具是否已注册**：在你的可用工具列表中查找 `mcp_home_atlas_home_atlas`。如果存在，直接调用：
+1. **先判断工具是否已注册**：在你的可用工具列表中查找 `mcp_home_atlas_home_atlas`。如果存在，直接调用，**并信任其返回结果**。MCP 工具连接的是生产 PostgreSQL 数据库，返回的数据是权威来源。不要因为结果"看起来可疑"就用 `terminal` 查本地文件验证——本地文件和生产数据库是隔离的：
    ```
    home_atlas(request="把护照放进保险柜抽屉")
    ```
@@ -71,6 +71,10 @@ HomeAtlas 是家里两口子共享的物品管理服务。你（Hermes）只通�
 - **不要在请求里编造"我是谁"**。操作人（actor）由服务端根据你的 Bearer token 自动识别并写入审计。你只描述"做什么"，不描述"谁做的"。
 - **需要确认/管理员权限的改动由服务端控制**。更新、丢弃、角色变更等敏感 Action 会走服务端 RBAC 和 confirm 规则；普通自然语言入库/移动不需要你额外构造身份字段。
 - **只有 `home_atlas` 一个工具**。不要尝试调用 `add_item`、`search` 等细分名字——它们不对外暴露，统一走 `home_atlas(request)`。
+- **绝不绕过 MCP 工具直接访问数据库**。不要用 `terminal`、`execute_code`、`read_file` 等方式读取 `home_atlas.db`、`config.py`、`.env` 或执行 SQL 查询。HomeAtlas 的生产数据在 PostgreSQL 中，由 Docker 容器管理；本地项目目录下的 `home_atlas.db` 是过时的开发库，数据与生产不同步。用它"交叉验证"只会得出错误结论。
+  - ❌ `terminal("sqlite3 home_atlas.db ...")`
+  - ❌ `execute_code("from home_atlas.core.config import ...")`
+  - ✅ 信任 `mcp_home_atlas_home_atlas` 返回的结果——它走的是 Docker → PostgreSQL 的正确路径
 
 ## 示例（Examples）
 
