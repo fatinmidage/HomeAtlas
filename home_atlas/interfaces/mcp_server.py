@@ -11,12 +11,12 @@ from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
-from home_atlas.app.actions import item_snapshot
+from home_atlas.app.actions import item_snapshot, location_snapshot
 from home_atlas.app.dispatcher import dispatch_action, dispatch_function
 from home_atlas.app.orchestrator import home_atlas as run_home_atlas
 from home_atlas.core.config import Settings, get_settings
 from home_atlas.core.security import UnauthorizedError, resolve_actor_id
-from home_atlas.domain.models import Item
+from home_atlas.domain.models import Item, Location
 from home_atlas.infra.db import create_db_engine, seed_people_from_tokens, session_scope
 from home_atlas.infra.db_isolation import grant_select_on_new_tables, verify_readonly_isolation
 from home_atlas.infra.schema_migration import require_schema_version
@@ -140,6 +140,79 @@ def build_fastmcp(settings: Settings | None = None):
                 return {"status": "ok", "items": items}
 
         return await anyio.to_thread.run_sync(_run)
+
+    @mcp.tool()
+    async def list_locations(ctx: Context) -> dict:
+        """Return all household locations, including parent-child hierarchy."""
+
+        bearer_token = _bearer_token(ctx)
+
+        def _run() -> dict:
+            with session_scope(engine) as session:
+                actor_id = resolve_actor_id(session, bearer_token, settings.token_map)
+                result = dispatch_function(session, actor_id, "list_locations", {})
+                return {"status": "ok", **result}
+
+        return await anyio.to_thread.run_sync(_run)
+
+    @mcp.tool()
+    async def create_location(
+        ctx: Context,
+        name: str,
+        parent_name: str | None = None,
+        notes: str | None = None,
+    ) -> dict:
+        """Create a household location before items are stored there."""
+
+        return await _run_location_action(
+            ctx,
+            engine,
+            settings,
+            "CreateLocation",
+            _compact_params(name=name, parent_name=parent_name, notes=notes),
+        )
+
+    @mcp.tool()
+    async def rename_location(ctx: Context, name: str, new_name: str) -> dict:
+        """Rename an existing household location."""
+
+        return await _run_location_action(
+            ctx,
+            engine,
+            settings,
+            "RenameLocation",
+            {"name": name, "new_name": new_name},
+        )
+
+    @mcp.tool()
+    async def update_location(
+        ctx: Context,
+        name: str,
+        parent_name: str | None = None,
+        notes: str | None = None,
+    ) -> dict:
+        """Update a household location parent or notes."""
+
+        return await _run_location_action(
+            ctx,
+            engine,
+            settings,
+            "UpdateLocation",
+            _compact_params(name=name, parent_name=parent_name, notes=notes),
+        )
+
+    @mcp.tool()
+    async def delete_location(ctx: Context, name: str) -> dict:
+        """Delete an empty household location after confirmation."""
+
+        return await _run_location_action(
+            ctx,
+            engine,
+            settings,
+            "DeleteLocation",
+            {"name": name},
+            confirm=True,
+        )
 
     @mcp.tool()
     async def add_item(
@@ -269,6 +342,27 @@ async def _run_item_action(
             if not isinstance(item, Item):
                 raise TypeError(f"{action_name} returned {type(item).__name__}, expected Item")
             return {"status": "ok", "item": item_snapshot(session, item)}
+
+    return await anyio.to_thread.run_sync(_run)
+
+
+async def _run_location_action(
+    ctx: Context,
+    engine: Any,
+    settings: Settings,
+    action_name: str,
+    params: dict[str, Any],
+    confirm: bool = False,
+) -> dict:
+    bearer_token = _bearer_token(ctx)
+
+    def _run() -> dict:
+        with session_scope(engine) as session:
+            actor_id = resolve_actor_id(session, bearer_token, settings.token_map)
+            location = dispatch_action(session, actor_id, action_name, params, confirm=confirm)
+            if not isinstance(location, Location):
+                raise TypeError(f"{action_name} returned {type(location).__name__}, expected Location")
+            return {"status": "ok", "location": location_snapshot(location)}
 
     return await anyio.to_thread.run_sync(_run)
 

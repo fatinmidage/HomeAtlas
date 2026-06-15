@@ -544,6 +544,52 @@ _ACTION_TYPES: list[ActionTypeDef] = [
         implementation="home_atlas.app.actions.move_item",
     ),
     ActionTypeDef(
+        api_name="CreateLocation",
+        event_action=EventAction.CREATE_LOCATION,
+        applicable_to=frozenset(),
+        parameters=(
+            ActionParameterDef("name", str, True, "位置名称"),
+            ActionParameterDef("parent_name", str, False, "父级位置名称"),
+            ActionParameterDef("notes", str, False, "备注"),
+        ),
+        description="创建家庭位置",
+        implementation="home_atlas.app.actions.create_location",
+    ),
+    ActionTypeDef(
+        api_name="RenameLocation",
+        event_action=EventAction.RENAME_LOCATION,
+        applicable_to=frozenset(),
+        parameters=(
+            ActionParameterDef("name", str, True, "原位置名称"),
+            ActionParameterDef("new_name", str, True, "新位置名称"),
+        ),
+        description="重命名家庭位置",
+        implementation="home_atlas.app.actions.rename_location",
+    ),
+    ActionTypeDef(
+        api_name="UpdateLocation",
+        event_action=EventAction.UPDATE_LOCATION,
+        applicable_to=frozenset(),
+        parameters=(
+            ActionParameterDef("name", str, True, "位置名称"),
+            ActionParameterDef("parent_name", str, False, "父级位置名称"),
+            ActionParameterDef("notes", str, False, "备注"),
+        ),
+        description="更新家庭位置的父级或备注",
+        implementation="home_atlas.app.actions.update_location",
+    ),
+    ActionTypeDef(
+        api_name="DeleteLocation",
+        event_action=EventAction.DELETE_LOCATION,
+        applicable_to=frozenset(),
+        requires_confirm=True,
+        parameters=(
+            ActionParameterDef("name", str, True, "位置名称"),
+        ),
+        description="删除没有物品和子位置的家庭位置",
+        implementation="home_atlas.app.actions.delete_location",
+    ),
+    ActionTypeDef(
         api_name="AdjustQuantity",
         event_action=EventAction.ADJUST_QUANTITY,
         applicable_to=_PERISHABLE_KINDS,
@@ -664,6 +710,12 @@ _ACTION_TYPES: list[ActionTypeDef] = [
 ]
 
 _FUNCTION_DEFS: list[FunctionDef] = [
+    FunctionDef(
+        api_name="list_locations",
+        parameters=(),
+        implementation="home_atlas.app.actions.list_locations",
+        description="列出家庭位置和树形层级",
+    ),
     FunctionDef(
         api_name="search_items",
         parameters=(

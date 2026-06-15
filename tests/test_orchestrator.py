@@ -11,7 +11,7 @@ from sqlmodel import Session, select
 from home_atlas.app.agents import HomeAtlasDeps, _tool_result, build_agents, should_use_ai
 from home_atlas.interfaces.cli import init_db
 from home_atlas.core.config import Settings
-from home_atlas.app.actions import add_item, recent_activity
+from home_atlas.app.actions import add_item, create_location, recent_activity
 from home_atlas.interfaces.mcp_server import HomeAtlasTokenVerifier, build_fastmcp
 from home_atlas.infra.db import create_db_engine, session_scope
 from home_atlas.domain.models import Item, ItemKind
@@ -70,6 +70,11 @@ def test_fastmcp_exposes_read_write_split_tools(tmp_path: Path) -> None:
         assert tool_names == {
             "home_atlas",
             "ontology_describe",
+            "list_locations",
+            "create_location",
+            "rename_location",
+            "update_location",
+            "delete_location",
             "search_items",
             "add_item",
             "move_item",
@@ -84,6 +89,10 @@ def test_fastmcp_exposes_read_write_split_tools(tmp_path: Path) -> None:
     schemas = asyncio.run(list_tool_schemas())
     assert schemas["add_item"]["required"] == ["name", "kind", "location_name"]
     assert schemas["move_item"]["required"] == ["item_id", "location_name"]
+    assert schemas["create_location"]["required"] == ["name"]
+    assert schemas["rename_location"]["required"] == ["name", "new_name"]
+    assert schemas["update_location"]["required"] == ["name"]
+    assert schemas["delete_location"]["required"] == ["name"]
     assert schemas["discard_item"]["required"] == ["item_id"]
     assert schemas["update_item"]["required"] == ["item_id"]
     assert {"query", "kind", "domain", "location", "expiring_within_days", "include_archived"} <= set(
@@ -98,6 +107,27 @@ def test_fastmcp_structured_tools_write_and_return_snapshots(tmp_path: Path) -> 
         ctx = SimpleNamespace(
             request_context=SimpleNamespace(meta=SimpleNamespace(home_atlas_bearer_token="you-token"))
         )
+        kitchen = await mcp._tool_manager.call_tool(
+            "create_location",
+            {"name": "厨房柜子", "notes": "干货区"},
+            context=ctx,
+        )
+        fridge = await mcp._tool_manager.call_tool(
+            "create_location",
+            {"name": "冰箱", "parent_name": "厨房柜子"},
+            context=ctx,
+        )
+        empty_location = await mcp._tool_manager.call_tool(
+            "create_location",
+            {"name": "临时空位置"},
+            context=ctx,
+        )
+        deleted_location = await mcp._tool_manager.call_tool(
+            "delete_location",
+            {"name": "临时空位置"},
+            context=ctx,
+        )
+        locations = await mcp._tool_manager.call_tool("list_locations", {}, context=ctx)
         created = await mcp._tool_manager.call_tool(
             "add_item",
             {
@@ -131,9 +161,13 @@ def test_fastmcp_structured_tools_write_and_return_snapshots(tmp_path: Path) -> 
             assert db_item.expiry_date == date(2027, 1, 1)
             assert db_item.archived is True
 
-        return created, found, moved, updated, discarded
+        return kitchen, fridge, empty_location, deleted_location, locations, created, found, moved, updated, discarded
 
-    created, found, moved, updated, discarded = asyncio.run(run_tools())
+    kitchen, fridge, empty_location, deleted_location, locations, created, found, moved, updated, discarded = asyncio.run(run_tools())
+    assert kitchen["location"]["name"] == "厨房柜子"
+    assert fridge["location"]["parent_id"] == kitchen["location"]["id"]
+    assert deleted_location["location"]["id"] == empty_location["location"]["id"]
+    assert locations["tree"][0]["children"][0]["name"] == "冰箱"
     assert created["status"] == "ok"
     assert created["item"]["expiry_date"] == "2026-12-14"
     assert created["item"]["location"] == "厨房柜子"
@@ -151,6 +185,7 @@ def test_fastmcp_write_tool_snapshots_mask_secret_properties(tmp_path: Path) -> 
         ctx = SimpleNamespace(
             request_context=SimpleNamespace(meta=SimpleNamespace(home_atlas_bearer_token="you-token"))
         )
+        await mcp._tool_manager.call_tool("create_location", {"name": "钱包"}, context=ctx)
         return await mcp._tool_manager.call_tool(
             "add_item",
             {
@@ -423,6 +458,7 @@ def test_classify_domain_uses_registry_keywords() -> None:
 
 
 def test_orchestrator_unknown_put_uses_other_domain(session: Session, actor_id: int) -> None:
+    create_location(session, actor_id=actor_id, name="电视柜")
     result = home_atlas("把遥控器放进电视柜", session, actor_id)
 
     assert result["domain"] == "other"

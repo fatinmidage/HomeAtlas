@@ -14,7 +14,7 @@ from alembic.config import Config
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 
-from home_atlas.app.dispatcher import dispatch_function
+from home_atlas.app.dispatcher import dispatch_action, dispatch_function
 from home_atlas.app.orchestrator import home_atlas
 from home_atlas.core.config import Settings, get_settings
 from home_atlas.core.security import resolve_actor_id
@@ -116,6 +116,7 @@ def smoke(settings: Settings, *, token: str | None, item: str, location: str) ->
     engine = create_db_engine(settings)
     with session_scope(engine) as session:
         actor_id = resolve_actor_id(session, token, settings.token_map)
+        _ensure_smoke_location(session, actor_id, location)
         write_result = home_atlas(f"把{item}放进{location}", session, actor_id, settings)
         where_result = home_atlas(f"{item}在哪？", session, actor_id, settings)
         audit_result = home_atlas(f"上次谁动了{item}？", session, actor_id, settings)
@@ -145,6 +146,7 @@ def dual_smoke(
     with session_scope(engine) as session:
         writer_id = resolve_actor_id(session, writer_token, settings.token_map)
         reader_id = resolve_actor_id(session, reader_token, settings.token_map)
+        _ensure_smoke_location(session, writer_id, location)
         write_result = home_atlas(f"把{item}放进{location}", session, writer_id, settings)
         where_result = home_atlas(f"{item}在哪？", session, reader_id, settings)
         audit = home_atlas(f"上次谁动了{item}？", session, reader_id, settings)
@@ -168,6 +170,13 @@ def dual_smoke(
         )
     )
     return 0 if ok else 1
+
+
+def _ensure_smoke_location(session, actor_id: int, location: str) -> None:
+    locations = dispatch_function(session, actor_id, "list_locations", {})
+    if any(row["name"] == location for row in locations["locations"]):
+        return
+    dispatch_action(session, actor_id, "CreateLocation", {"name": location})
 
 
 def backup_db(settings: Settings, *, output_path: Path) -> int:

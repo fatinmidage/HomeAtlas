@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, or_, select
 
@@ -92,17 +93,66 @@ def _event(
 def _location(session: Session, name: str) -> Location:
     location = session.exec(select(Location).where(Location.name == name)).first()
     if location is None:
-        location = Location(name=name)
-        session.add(location)
-        try:
-            session.flush()
-        except IntegrityError:
-            session.rollback()
-            location = session.exec(select(Location).where(Location.name == name)).first()
-            if location is None:
-                raise
+        raise HomeAtlasError(f"location {name!r} not found; create it first with CreateLocation")
     assert location.id is not None
     return location
+
+
+def _create_location(session: Session, name: str, parent_id: int | None = None, notes: str | None = None) -> Location:
+    location = Location(name=name, parent_id=parent_id, notes=notes)
+    session.add(location)
+    try:
+        session.flush()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HomeAtlasError(f"location {name!r} already exists") from exc
+    assert location.id is not None
+    return location
+
+
+def _location_dict(location: Location) -> dict[str, Any]:
+    return {
+        "id": location.id,
+        "name": location.name,
+        "parent_id": location.parent_id,
+        "notes": location.notes,
+        "created_at": utc_isoformat(location.created_at),
+    }
+
+
+def _location_tree(locations: list[Location]) -> list[dict[str, Any]]:
+    nodes = [{**_location_dict(location), "children": []} for location in locations]
+    by_id = {node["id"]: node for node in nodes}
+    roots: list[dict[str, Any]] = []
+    for node in nodes:
+        parent = by_id.get(node["parent_id"])
+        if parent is None:
+            roots.append(node)
+        else:
+            parent["children"].append(node)
+    return roots
+
+
+def _record_location_event(
+    session: Session,
+    *,
+    actor_id: int,
+    action: EventAction,
+    summary: str,
+    before: dict[str, Any] | None,
+    after: dict[str, Any] | None,
+) -> None:
+    session.add(
+        Event(
+            item_id=None,
+            actor_id=actor_id,
+            action=action,
+            summary=summary,
+            before=before,
+            after=after,
+            version=None,
+        )
+    )
 
 
 def _item(session: Session, item_id: int) -> Item:
@@ -115,6 +165,132 @@ def _item(session: Session, item_id: int) -> Item:
 def _person_name(session: Session, actor_id: int) -> str:
     person = session.get(Person, actor_id)
     return person.name if person else f"person:{actor_id}"
+
+
+def list_locations(session: Session) -> dict[str, Any]:
+    locations = session.exec(select(Location).order_by(Location.parent_id, Location.name, Location.id)).all()
+    return {
+        "locations": [_location_dict(location) for location in locations],
+        "tree": _location_tree(locations),
+    }
+
+
+def create_location(
+    session: Session,
+    *,
+    actor_id: int,
+    name: str,
+    parent_name: str | None = None,
+    notes: str | None = None,
+) -> Location:
+    check_action_permission(session, actor_id, "CreateLocation")
+    scan_sensitive_text(name, "name")
+    scan_sensitive_text(parent_name, "parent_name")
+    scan_sensitive_text(notes, "notes")
+    parent = _location(session, parent_name) if parent_name else None
+    location = _create_location(session, name, parent.id if parent else None, notes)
+    after = _location_dict(location)
+    _record_location_event(
+        session,
+        actor_id=actor_id,
+        action=EventAction.CREATE_LOCATION,
+        summary=f"Created location {name}",
+        before=None,
+        after=after,
+    )
+    session.commit()
+    session.refresh(location)
+    return location
+
+
+def rename_location(session: Session, *, actor_id: int, name: str, new_name: str) -> Location:
+    check_action_permission(session, actor_id, "RenameLocation")
+    scan_sensitive_text(name, "name")
+    scan_sensitive_text(new_name, "new_name")
+    location = _location(session, name)
+    before = _location_dict(location)
+    location.name = new_name
+    session.add(location)
+    try:
+        session.flush()
+    except IntegrityError as exc:
+        session.rollback()
+        raise HomeAtlasError(f"location {new_name!r} already exists") from exc
+    after = _location_dict(location)
+    _record_location_event(
+        session,
+        actor_id=actor_id,
+        action=EventAction.RENAME_LOCATION,
+        summary=f"Renamed location {name} to {new_name}",
+        before=before,
+        after=after,
+    )
+    session.commit()
+    session.refresh(location)
+    return location
+
+
+def update_location(
+    session: Session,
+    *,
+    actor_id: int,
+    name: str,
+    parent_name: str | None = None,
+    notes: str | None = None,
+) -> Location:
+    check_action_permission(session, actor_id, "UpdateLocation")
+    scan_sensitive_text(name, "name")
+    scan_sensitive_text(parent_name, "parent_name")
+    scan_sensitive_text(notes, "notes")
+    location = _location(session, name)
+    before = _location_dict(location)
+    if parent_name is not None:
+        parent = _location(session, parent_name)
+        if parent.id == location.id:
+            raise HomeAtlasError("location cannot be its own parent")
+        location.parent_id = parent.id
+    if notes is not None:
+        location.notes = notes
+    session.add(location)
+    session.flush()
+    after = _location_dict(location)
+    _record_location_event(
+        session,
+        actor_id=actor_id,
+        action=EventAction.UPDATE_LOCATION,
+        summary=f"Updated location {name}",
+        before=before,
+        after=after,
+    )
+    session.commit()
+    session.refresh(location)
+    return location
+
+
+def delete_location(session: Session, *, actor_id: int, name: str, confirm: bool = False) -> Location:
+    check_action_permission(session, actor_id, "DeleteLocation")
+    if not confirm:
+        raise HomeAtlasError("delete location requires confirm=true")
+    scan_sensitive_text(name, "name")
+    location = _location(session, name)
+    item_count = session.exec(select(func.count()).select_from(Item).where(Item.location_id == location.id)).one()
+    if item_count:
+        raise HomeAtlasError(f"location {name!r} still contains {item_count} item(s)")
+    child_count = session.exec(select(func.count()).select_from(Location).where(Location.parent_id == location.id)).one()
+    if child_count:
+        raise HomeAtlasError(f"location {name!r} still has {child_count} child location(s)")
+    before = _location_dict(location)
+    session.delete(location)
+    _record_location_event(
+        session,
+        actor_id=actor_id,
+        action=EventAction.DELETE_LOCATION,
+        summary=f"Deleted location {name}",
+        before=before,
+        after=None,
+    )
+    session.commit()
+    return location
 
 
 def add_item(
@@ -489,6 +665,10 @@ def item_snapshot(session: Session, item: Item) -> dict[str, Any]:
     if location is None:
         raise HomeAtlasError(f"location {item.location_id} not found")
     return _item_dict(item, location)
+
+
+def location_snapshot(location: Location) -> dict[str, Any]:
+    return _location_dict(location)
 
 
 def where_is(session: Session, name: str) -> dict[str, Any]:

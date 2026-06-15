@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 from home_atlas.interfaces.cli import init_db
 from home_atlas.core.config import Settings
 from home_atlas.infra.db import create_db_engine, session_scope
-from home_atlas.domain.models import Event, Person
+from home_atlas.domain.models import Event, Location, Person
 from home_atlas.domain.ontology import get_registry
 from home_atlas.interfaces.rest_api import build_rest_app
 
@@ -28,6 +28,10 @@ def _build_test_app(tmp_path: Path) -> tuple[TestClient, int]:
         person = session.exec(select(Person).where(Person.name == "你")).first()
         assert person is not None
         actor_id = person.id
+        for name in ("保险柜", "冰箱", "桌子", "钱包", "餐桌"):
+            if session.exec(select(Location).where(Location.name == name)).first() is None:
+                session.add(Location(name=name))
+        session.commit()
     return client, actor_id
 
 
@@ -124,6 +128,9 @@ def test_rest_dispatches_all_registered_actions(tmp_path: Path) -> None:
     item_id = created.json()["result"]["id"]
 
     calls = {
+        "CreateLocation": {"params": {"name": "书房", "notes": "工作区"}},
+        "RenameLocation": {"params": {"name": "书房", "new_name": "书房柜"}},
+        "UpdateLocation": {"params": {"name": "书房柜", "parent_name": "桌子", "notes": "临时测试"}},
         "MoveItem": {"params": {"item_id": item_id, "location_name": "餐桌"}},
         "AdjustQuantity": {"params": {"item_id": item_id, "delta": 1}},
         "SetQuantity": {"params": {"item_id": item_id, "quantity": 5}},
@@ -137,6 +144,7 @@ def test_rest_dispatches_all_registered_actions(tmp_path: Path) -> None:
             },
         },
         "SetPersonRole": {"params": {"person_name": "配偶", "role": "member"}},
+        "DeleteLocation": {"params": {"name": "书房柜"}, "confirm": True},
         "DiscardItem": {"params": {"item_id": item_id}, "confirm": True},
     }
     for action_name, body in calls.items():
@@ -180,6 +188,7 @@ def test_rest_registered_functions_are_callable(tmp_path: Path) -> None:
     }, headers=headers)
 
     calls = {
+        "list_locations": {},
         "search_items": {"query": "函数测试"},
         "where_is": {"name": "函数测试物品"},
         "list_expiring": {"within_days": "30"},

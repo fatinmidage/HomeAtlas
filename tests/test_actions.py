@@ -8,18 +8,23 @@ from sqlmodel import Session, select
 from home_atlas.app.actions import (
     add_item,
     adjust_quantity,
+    create_location,
+    delete_location,
     discard_item,
     last_touched,
     list_expiring,
+    list_locations,
     move_item,
     recent_activity,
+    rename_location,
     search_items,
     set_quantity,
+    update_location,
     update_item,
     upsert_card_reference,
     where_is,
 )
-from home_atlas.domain.models import Event, EventAction, Item, ItemKind, domain_for_kind
+from home_atlas.domain.models import Event, EventAction, Item, ItemKind, Location, domain_for_kind
 from home_atlas.core.security import HomeAtlasError, UnauthorizedError, resolve_actor_id
 
 
@@ -38,6 +43,52 @@ def test_add_move_and_audit_actor(session: Session, actor_id: int) -> None:
     events = session.exec(select(Event).where(Event.item_id == item.id)).all()
     assert [event.action for event in events] == [EventAction.ADD_ITEM, EventAction.MOVE_ITEM]
     assert all(event.actor_id == actor_id for event in events)
+
+
+def test_add_and_move_require_existing_locations(session: Session, actor_id: int) -> None:
+    with pytest.raises(HomeAtlasError, match="create it first"):
+        add_item(
+            session,
+            actor_id=actor_id,
+            name="不存在位置物品",
+            kind=ItemKind.OTHER,
+            location_name="不存在的位置",
+        )
+
+    item = add_item(session, actor_id=actor_id, name="钥匙", kind=ItemKind.OTHER, location_name="玄关")
+    with pytest.raises(HomeAtlasError, match="create it first"):
+        move_item(session, actor_id=actor_id, item_id=item.id, location_name="另一个不存在的位置")
+
+
+def test_location_actions_manage_hierarchy_and_guard_delete(session: Session, actor_id: int) -> None:
+    parent = create_location(session, actor_id=actor_id, name="客厅", notes="公共区域")
+    child = create_location(session, actor_id=actor_id, name="电视柜下层", parent_name="客厅")
+
+    locations = list_locations(session)
+    living_room = next(node for node in locations["tree"] if node["name"] == "客厅")
+    assert living_room["children"][0]["name"] == "电视柜下层"
+    assert child.parent_id == parent.id
+
+    renamed = rename_location(session, actor_id=actor_id, name="电视柜下层", new_name="电视柜抽屉")
+    assert renamed.name == "电视柜抽屉"
+
+    updated = update_location(session, actor_id=actor_id, name="电视柜抽屉", notes="遥控器常放这里")
+    assert updated.notes == "遥控器常放这里"
+
+    add_item(session, actor_id=actor_id, name="遥控器", kind=ItemKind.OTHER, location_name="电视柜抽屉")
+    with pytest.raises(HomeAtlasError, match="still contains"):
+        delete_location(session, actor_id=actor_id, name="电视柜抽屉", confirm=True)
+
+
+def test_delete_location_requires_confirmation(session: Session, actor_id: int) -> None:
+    create_location(session, actor_id=actor_id, name="临时空位置")
+
+    with pytest.raises(HomeAtlasError, match="delete location requires confirm=true"):
+        delete_location(session, actor_id=actor_id, name="临时空位置")
+
+    deleted = delete_location(session, actor_id=actor_id, name="临时空位置", confirm=True)
+    assert deleted.name == "临时空位置"
+    assert session.exec(select(Location).where(Location.name == "临时空位置")).first() is None
 
 
 def test_where_is_returns_most_recent_duplicate_name(session: Session, actor_id: int) -> None:
